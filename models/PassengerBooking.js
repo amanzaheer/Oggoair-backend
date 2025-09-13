@@ -132,6 +132,11 @@ const passengerBookingSchema = new mongoose.Schema({
         type: String,
         trim: true,
         maxlength: [1000, 'Notes cannot exceed 1000 characters']
+    },
+    // Flight data from frontend
+    flightData: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
     }
 }, {
     timestamps: true,

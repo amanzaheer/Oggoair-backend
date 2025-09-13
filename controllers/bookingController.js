@@ -4,7 +4,7 @@ const PassengerBooking = require('../models/PassengerBooking');
 const createBooking = async (req, res) => {
     try {
         console.log('Creating booking with data:', req.body);
-        const { email, phone, passengers, notes } = req.body;
+        const { email, phone, passengers, notes, flightData } = req.body;
 
         // Validate that at least one passenger is provided
         if (!passengers || passengers.length === 0) {
@@ -49,7 +49,8 @@ const createBooking = async (req, res) => {
             email,
             phone,
             passengers,
-            notes
+            notes,
+            flightData
         });
         console.log('Booking created successfully:', booking.bookingReference);
 
@@ -291,7 +292,7 @@ const updateBookingStatus = async (req, res) => {
 // Update booking details
 const updateBooking = async (req, res) => {
     try {
-        const { email, phone, passengers, notes } = req.body;
+        const { email, phone, passengers, notes, flightData } = req.body;
         const bookingId = req.params.id;
 
         const booking = await PassengerBooking.findById(bookingId);
@@ -323,6 +324,7 @@ const updateBooking = async (req, res) => {
         if (phone) booking.phone = phone;
         if (passengers) booking.passengers = passengers;
         if (notes !== undefined) booking.notes = notes;
+        if (flightData !== undefined) booking.flightData = flightData;
 
         await booking.save();
 
