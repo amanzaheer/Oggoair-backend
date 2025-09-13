@@ -137,6 +137,11 @@ const passengerBookingSchema = new mongoose.Schema({
     flightData: {
         type: mongoose.Schema.Types.Mixed,
         default: null
+    },
+    // Extra services from frontend
+    extraServices: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
     }
 }, {
     timestamps: true,
