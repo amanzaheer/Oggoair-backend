@@ -23,8 +23,65 @@ mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-  .then(() => console.log('MongoDB connected successfully'))
+  .then(async () => {
+    console.log('MongoDB connected successfully');
+    try {
+      await ensureDefaultAdmin();
+    } catch (err) {
+      console.error('Error ensuring default admin:', err);
+    }
+  })
   .catch((err) => console.error('MongoDB connection error:', err));
+
+// Ensure there is at least one admin user
+async function ensureDefaultAdmin() {
+  const User = require('./models/User');
+
+  const existingAdmin = await User.findOne({ role: 'admin' });
+  if (existingAdmin) {
+    console.log('Admin user exists:', existingAdmin.username);
+    return;
+  }
+
+  const adminFullName = process.env.ADMIN_FULLNAME || 'Administrator';
+  const adminUsername = (process.env.ADMIN_USERNAME || 'admin').toLowerCase();
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@oggoair.com').toLowerCase();
+  const adminPhone = process.env.ADMIN_PHONE || '+10000000000';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@12345';
+
+  const UserModel = User; // alias for clarity
+
+  const existingByUsernameOrEmail = await UserModel.findOne({
+    $or: [{ username: adminUsername }, { email: adminEmail }]
+  });
+
+  if (existingByUsernameOrEmail) {
+    // If a user exists with the intended creds but not admin, elevate to admin
+    if (existingByUsernameOrEmail.role !== 'admin') {
+      existingByUsernameOrEmail.role = 'admin';
+      await existingByUsernameOrEmail.save();
+      console.log('Promoted existing user to admin:', existingByUsernameOrEmail.username);
+    } else {
+      console.log('Admin user exists:', existingByUsernameOrEmail.username);
+    }
+    return;
+  }
+
+  const created = await UserModel.create({
+    fullName: adminFullName,
+    username: adminUsername,
+    email: adminEmail,
+    phone: adminPhone,
+    password: adminPassword,
+    role: 'admin'
+  });
+
+  console.log('Default admin created:', {
+    username: created.username,
+    email: created.email,
+    password: adminPassword
+  });
+}
 
 // Routes
 app.use('/api/users', userRoutes);
