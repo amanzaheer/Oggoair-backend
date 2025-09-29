@@ -63,6 +63,7 @@ const createBooking = async (req, res) => {
                     ...booking.summary,
                     email: booking.email,
                     phone: booking.phone,
+                    notes: booking.notes ?? null,
                     flightData: booking.flightData ?? null,
                     extraServices: booking.extraServices ?? null
                 },
@@ -344,6 +345,7 @@ const updateBooking = async (req, res) => {
                     ...booking.summary,
                     email: booking.email,
                     phone: booking.phone,
+                    notes: booking.notes ?? null,
                     flightData: booking.flightData ?? null,
                     extraServices: booking.extraServices ?? null
                 },
