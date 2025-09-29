@@ -59,7 +59,11 @@ const createBooking = async (req, res) => {
             status: 'success',
             message: 'Passenger booking created successfully',
             data: {
-                booking: booking.summary,
+                booking: {
+                    ...booking.summary,
+                    flightData: booking.flightData ?? null,
+                    extraServices: booking.extraServices ?? null
+                },
                 passengers: booking.passengers
             }
         });
@@ -334,7 +338,11 @@ const updateBooking = async (req, res) => {
             status: 'success',
             message: 'Booking updated successfully',
             data: {
-                booking: booking.summary,
+                booking: {
+                    ...booking.summary,
+                    flightData: booking.flightData ?? null,
+                    extraServices: booking.extraServices ?? null
+                },
                 passengers: booking.passengers
             }
         });

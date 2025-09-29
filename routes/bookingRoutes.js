@@ -69,9 +69,18 @@ const validateCreateBooking = [
         .withMessage('Passport expiry year must not be in the past'),
     body('notes')
         .optional()
+        .isObject()
+        .withMessage('Notes must be an object with type and text'),
+    body('notes.type')
+        .optional()
+        .isString()
         .trim()
+        .withMessage('Notes.type must be a string'),
+    body('notes.text')
+        .optional()
+        .isString()
         .isLength({ max: 1000 })
-        .withMessage('Notes cannot exceed 1000 characters')
+        .withMessage('Notes.text cannot exceed 1000 characters')
 ];
 
 // Validation middleware for updating booking

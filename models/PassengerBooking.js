@@ -129,9 +129,20 @@ const passengerBookingSchema = new mongoose.Schema({
         default: 'pending'
     },
     notes: {
-        type: String,
-        trim: true,
-        maxlength: [1000, 'Notes cannot exceed 1000 characters']
+        type: new mongoose.Schema({
+            type: {
+                type: String,
+                required: false,
+                trim: true
+            },
+            text: {
+                type: String,
+                required: false,
+                trim: true,
+                maxlength: [1000, 'Notes cannot exceed 1000 characters']
+            }
+        }, { _id: false }),
+        default: undefined
     },
     // Flight data from frontend
     flightData: {
