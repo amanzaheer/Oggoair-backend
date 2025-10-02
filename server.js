@@ -8,6 +8,7 @@ require('dotenv').config({ path: './config.env' });
 // Import routes
 const userRoutes = require('./routes/userRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
+const roleRoutes = require('./routes/roleRoutes');
 
 const app = express();
 
@@ -83,9 +84,11 @@ async function ensureDefaultAdmin() {
   });
 }
 
+
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/roles', roleRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
