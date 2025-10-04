@@ -25,7 +25,7 @@ const signupValidation = [
     .withMessage('Full name is required')
     .isLength({ max: 100 })
     .withMessage('Full name cannot exceed 100 characters'),
-  
+
   body('username')
     .trim()
     .notEmpty()
@@ -35,7 +35,7 @@ const signupValidation = [
     .matches(/^[a-zA-Z0-9_]+$/)
     .withMessage('Username can only contain letters, numbers, and underscores')
     .toLowerCase(),
-  
+
   body('email')
     .trim()
     .notEmpty()
@@ -44,25 +44,25 @@ const signupValidation = [
     .withMessage('Please enter a valid email')
     .normalizeEmail()
     .toLowerCase(),
-  
+
   body('phone')
     .trim()
     .notEmpty()
     .withMessage('Phone number is required')
     .matches(/^[\+]?[1-9][\d]{0,15}$/)
     .withMessage('Please enter a valid phone number'),
-  
+
   body('password')
     .notEmpty()
     .withMessage('Password is required')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters'),
-  
+
   body('role')
     .optional()
     .isIn(['user', 'admin'])
     .withMessage('Role must be either user or admin'),
-  
+
   handleValidationErrors
 ];
 
@@ -73,11 +73,11 @@ const loginValidation = [
     .notEmpty()
     .withMessage('Username is required')
     .toLowerCase(),
-  
+
   body('password')
     .notEmpty()
     .withMessage('Password is required'),
-  
+
   handleValidationErrors
 ];
 
@@ -90,7 +90,7 @@ const updateUserValidation = [
     .withMessage('Full name cannot be empty')
     .isLength({ max: 100 })
     .withMessage('Full name cannot exceed 100 characters'),
-  
+
   body('email')
     .optional()
     .trim()
@@ -100,7 +100,7 @@ const updateUserValidation = [
     .withMessage('Please enter a valid email')
     .normalizeEmail()
     .toLowerCase(),
-  
+
   body('phone')
     .optional()
     .trim()
@@ -108,17 +108,17 @@ const updateUserValidation = [
     .withMessage('Phone number cannot be empty')
     .matches(/^[\+]?[1-9][\d]{0,15}$/)
     .withMessage('Please enter a valid phone number'),
-  
+
   body('role')
     .optional()
     .isIn(['user', 'admin'])
     .withMessage('Role must be either user or admin'),
-  
+
   body('isActive')
     .optional()
     .isBoolean()
     .withMessage('isActive must be a boolean value'),
-  
+
   handleValidationErrors
 ];
 
@@ -127,13 +127,143 @@ const changePasswordValidation = [
   body('currentPassword')
     .notEmpty()
     .withMessage('Current password is required'),
-  
+
   body('newPassword')
     .notEmpty()
     .withMessage('New password is required')
     .isLength({ min: 6 })
     .withMessage('New password must be at least 6 characters'),
-  
+
+  handleValidationErrors
+];
+
+// Permission validation rules for CREATE
+const validatePermission = [
+  body('permissionName')
+    .trim()
+    .notEmpty()
+    .withMessage('Permission name is required')
+    .isLength({ max: 100 })
+    .withMessage('Permission name cannot exceed 100 characters'),
+
+  body('permissionKey')
+    .trim()
+    .notEmpty()
+    .withMessage('Permission key is required')
+    .isLength({ max: 50 })
+    .withMessage('Permission key cannot exceed 50 characters')
+    .matches(/^[a-z0-9_-]+$/)
+    .withMessage('Permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .toLowerCase(),
+
+  body('permissionSequence')
+    .isInt({ min: 1 })
+    .withMessage('Permission sequence must be a positive integer'),
+
+  body('subPermissions')
+    .optional()
+    .isArray()
+    .withMessage('Sub-permissions must be an array'),
+
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be a boolean value'),
+
+  handleValidationErrors
+];
+
+// Permission validation rules for UPDATE
+const validatePermissionUpdate = [
+  body('permissionName')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Permission name cannot be empty')
+    .isLength({ max: 100 })
+    .withMessage('Permission name cannot exceed 100 characters'),
+
+  body('permissionKey')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Permission key cannot be empty')
+    .isLength({ max: 50 })
+    .withMessage('Permission key cannot exceed 50 characters')
+    .matches(/^[a-z0-9_-]+$/)
+    .withMessage('Permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .toLowerCase(),
+
+  body('permissionSequence')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Permission sequence must be a positive integer'),
+
+  body('subPermissions')
+    .optional()
+    .isArray()
+    .withMessage('Sub-permissions must be an array'),
+
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be a boolean value'),
+
+  handleValidationErrors
+];
+
+// Sub-permission validation rules for CREATE
+const validateSubPermission = [
+  body('permissionName')
+    .trim()
+    .notEmpty()
+    .withMessage('Sub-permission name is required')
+    .isLength({ max: 100 })
+    .withMessage('Sub-permission name cannot exceed 100 characters'),
+
+  body('permissionKey')
+    .trim()
+    .notEmpty()
+    .withMessage('Sub-permission key is required')
+    .isLength({ max: 50 })
+    .withMessage('Sub-permission key cannot exceed 50 characters')
+    .matches(/^[a-z0-9_-]+$/)
+    .withMessage('Sub-permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .toLowerCase(),
+
+  body('permissionSequence')
+    .isInt({ min: 1 })
+    .withMessage('Sub-permission sequence must be a positive integer'),
+
+  handleValidationErrors
+];
+
+// Sub-permission validation rules for UPDATE
+const validateSubPermissionUpdate = [
+  body('permissionName')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Sub-permission name cannot be empty')
+    .isLength({ max: 100 })
+    .withMessage('Sub-permission name cannot exceed 100 characters'),
+
+  body('permissionKey')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Sub-permission key cannot be empty')
+    .isLength({ max: 50 })
+    .withMessage('Sub-permission key cannot exceed 50 characters')
+    .matches(/^[a-z0-9_-]+$/)
+    .withMessage('Sub-permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .toLowerCase(),
+
+  body('permissionSequence')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Sub-permission sequence must be a positive integer'),
+
   handleValidationErrors
 ];
 
@@ -142,5 +272,9 @@ module.exports = {
   loginValidation,
   updateUserValidation,
   changePasswordValidation,
+  validatePermission,
+  validatePermissionUpdate,
+  validateSubPermission,
+  validateSubPermissionUpdate,
   handleValidationErrors
 };
