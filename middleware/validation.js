@@ -152,8 +152,8 @@ const validatePermission = [
     .withMessage('Permission key is required')
     .isLength({ max: 50 })
     .withMessage('Permission key cannot exceed 50 characters')
-    .matches(/^[a-z0-9_-]+$/)
-    .withMessage('Permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .matches(/^[a-z0-9._-]+$/)
+    .withMessage('Permission key can only contain lowercase letters, numbers, dots, hyphens, and underscores')
     .toLowerCase(),
 
   body('permissionSequence')
@@ -190,8 +190,8 @@ const validatePermissionUpdate = [
     .withMessage('Permission key cannot be empty')
     .isLength({ max: 50 })
     .withMessage('Permission key cannot exceed 50 characters')
-    .matches(/^[a-z0-9_-]+$/)
-    .withMessage('Permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .matches(/^[a-z0-9._-]+$/)
+    .withMessage('Permission key can only contain lowercase letters, numbers, dots, hyphens, and underscores')
     .toLowerCase(),
 
   body('permissionSequence')
@@ -227,8 +227,8 @@ const validateSubPermission = [
     .withMessage('Sub-permission key is required')
     .isLength({ max: 50 })
     .withMessage('Sub-permission key cannot exceed 50 characters')
-    .matches(/^[a-z0-9_-]+$/)
-    .withMessage('Sub-permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .matches(/^[a-z0-9._-]+$/)
+    .withMessage('Sub-permission key can only contain lowercase letters, numbers, dots, hyphens, and underscores')
     .toLowerCase(),
 
   body('permissionSequence')
@@ -255,8 +255,8 @@ const validateSubPermissionUpdate = [
     .withMessage('Sub-permission key cannot be empty')
     .isLength({ max: 50 })
     .withMessage('Sub-permission key cannot exceed 50 characters')
-    .matches(/^[a-z0-9_-]+$/)
-    .withMessage('Sub-permission key can only contain lowercase letters, numbers, hyphens, and underscores')
+    .matches(/^[a-z0-9._-]+$/)
+    .withMessage('Sub-permission key can only contain lowercase letters, numbers, dots, hyphens, and underscores')
     .toLowerCase(),
 
   body('permissionSequence')

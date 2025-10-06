@@ -13,7 +13,7 @@ const subPermissionSchema = new mongoose.Schema({
         trim: true,
         lowercase: true,
         maxlength: [50, 'Sub-permission key cannot exceed 50 characters'],
-        match: [/^[a-z0-9_-]+$/, 'Sub-permission key can only contain lowercase letters, numbers, hyphens, and underscores']
+        match: [/^[a-z0-9._-]+$/, 'Sub-permission key can only contain lowercase letters, numbers, dots, hyphens, and underscores']
     },
     permissionSequence: {
         type: Number,
@@ -36,7 +36,7 @@ const permissionSchema = new mongoose.Schema({
         trim: true,
         lowercase: true,
         maxlength: [50, 'Permission key cannot exceed 50 characters'],
-        match: [/^[a-z0-9_-]+$/, 'Permission key can only contain lowercase letters, numbers, hyphens, and underscores']
+        match: [/^[a-z0-9._-]+$/, 'Permission key can only contain lowercase letters, numbers, dots, hyphens, and underscores']
     },
     permissionSequence: {
         type: Number,
