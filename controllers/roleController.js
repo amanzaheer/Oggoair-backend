@@ -449,6 +449,62 @@ const getRoleStats = async (req, res) => {
     }
 };
 
+// Assign role to user
+const assignUserRole = async (req, res) => {
+    try {
+        const { userId, roleId } = req.body;
+
+        // Check if role exists
+        const role = await Role.findById(roleId);
+        if (!role) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Role not found'
+            });
+        }
+
+        // Check if role is active
+        if (!role.isActive) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Cannot assign inactive role to user'
+            });
+        }
+
+        // Check if user exists
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found'
+            });
+        }
+
+        // Assign role to user
+        user.assignedRole = roleId;
+        await user.save();
+
+        // Get updated user with populated role
+        const updatedUser = await User.findById(userId)
+            .populate('assignedRole', 'name displayName description permissions isActive')
+            .select('-password');
+
+        res.status(200).json({
+            status: 'success',
+            message: `Role "${role.displayName}" assigned to user successfully`,
+            data: {
+                user: updatedUser.profile
+            }
+        });
+    } catch (error) {
+        console.error('Assign user role error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error assigning role to user'
+        });
+    }
+};
+
 module.exports = {
     createRole,
     getAllRoles,
@@ -458,5 +514,6 @@ module.exports = {
     deleteRole,
     addPermissionToRole,
     removePermissionFromRole,
-    getRoleStats
+    getRoleStats,
+    assignUserRole
 };

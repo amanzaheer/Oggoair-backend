@@ -13,8 +13,8 @@ const signup = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         status: 'error',
-        message: existingUser.username === username.toLowerCase() 
-          ? 'Username already exists' 
+        message: existingUser.username === username.toLowerCase()
+          ? 'Username already exists'
           : 'Email already exists'
       });
     }
@@ -93,10 +93,15 @@ const login = async (req, res) => {
 // Get current user profile
 const getMe = async (req, res) => {
   try {
+    // Populate assigned role for current user
+    const user = await User.findById(req.user._id)
+      .populate('assignedRole', 'name displayName description permissions isActive')
+      .select('-password');
+
     res.status(200).json({
       status: 'success',
       data: {
-        user: req.user.profile
+        user: user.profile
       }
     });
   } catch (error) {
@@ -126,6 +131,7 @@ const getAllUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
+      .populate('assignedRole', 'name displayName description permissions isActive')
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -156,7 +162,9 @@ const getAllUsers = async (req, res) => {
 // Get user by ID
 const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const user = await User.findById(req.params.id)
+      .populate('assignedRole', 'name displayName description permissions isActive')
+      .select('-password');
 
     if (!user) {
       return res.status(404).json({

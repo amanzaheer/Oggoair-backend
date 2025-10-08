@@ -43,6 +43,11 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
+  assignedRole: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Role',
+    default: null
+  },
   isActive: {
     type: Boolean,
     default: true
@@ -58,7 +63,7 @@ const userSchema = new mongoose.Schema({
 });
 
 // Virtual for user's full profile (excluding password)
-userSchema.virtual('profile').get(function() {
+userSchema.virtual('profile').get(function () {
   return {
     id: this._id,
     fullName: this.fullName,
@@ -66,6 +71,7 @@ userSchema.virtual('profile').get(function() {
     email: this.email,
     phone: this.phone,
     role: this.role,
+    assignedRole: this.assignedRole,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
     createdAt: this.createdAt,
@@ -74,10 +80,10 @@ userSchema.virtual('profile').get(function() {
 });
 
 // Hash password before saving
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function (next) {
   // Only hash the password if it has been modified (or is new)
   if (!this.isModified('password')) return next();
-  
+
   try {
     // Hash password with cost of 12
     this.password = await bcrypt.hash(this.password, 12);
@@ -88,18 +94,18 @@ userSchema.pre('save', async function(next) {
 });
 
 // Instance method to check if password is correct
-userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
+userSchema.methods.correctPassword = async function (candidatePassword, userPassword) {
   return await bcrypt.compare(candidatePassword, userPassword);
 };
 
 // Instance method to update last login
-userSchema.methods.updateLastLogin = function() {
+userSchema.methods.updateLastLogin = function () {
   this.lastLogin = new Date();
   return this.save();
 };
 
 // Static method to find user by username or email
-userSchema.statics.findByUsernameOrEmail = function(identifier) {
+userSchema.statics.findByUsernameOrEmail = function (identifier) {
   return this.findOne({
     $or: [
       { username: identifier.toLowerCase() },
@@ -112,5 +118,6 @@ userSchema.statics.findByUsernameOrEmail = function(identifier) {
 userSchema.index({ username: 1 });
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ assignedRole: 1 });
 
 module.exports = mongoose.model('User', userSchema);

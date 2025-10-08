@@ -70,6 +70,16 @@ const validatePermissionOperation = [
         .withMessage('Permission must be in format: resource.action or resource.action.scope')
 ];
 
+// Validation middleware for user role assignment
+const validateUserRoleAssignment = [
+    body('userId')
+        .isMongoId()
+        .withMessage('Valid user ID is required'),
+    body('roleId')
+        .isMongoId()
+        .withMessage('Valid role ID is required')
+];
+
 // All routes require authentication
 router.use(protect);
 
@@ -77,6 +87,11 @@ router.use(protect);
 router.post('/', restrictTo('admin'), validateCreateRole, roleController.createRole);
 router.get('/', restrictTo('admin'), roleController.getAllRoles);
 router.get('/stats', restrictTo('admin'), roleController.getRoleStats);
+
+// User role assignment route (Admin only) - Must be before parameterized routes
+router.post('/assign-user-role', restrictTo('admin'), validateUserRoleAssignment, roleController.assignUserRole);
+
+// Parameterized routes (Admin only)
 router.get('/:id', restrictTo('admin'), roleController.getRoleById);
 router.get('/name/:name', restrictTo('admin'), roleController.getRoleByName);
 router.put('/:id', restrictTo('admin'), validateUpdateRole, roleController.updateRole);
