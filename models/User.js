@@ -55,6 +55,11 @@ const userSchema = new mongoose.Schema({
   lastLogin: {
     type: Date,
     default: null
+  },
+  refreshToken: {
+    type: String,
+    default: null,
+    select: false // Don't include refresh token in queries by default
   }
 }, {
   timestamps: true,
@@ -101,6 +106,18 @@ userSchema.methods.correctPassword = async function (candidatePassword, userPass
 // Instance method to update last login
 userSchema.methods.updateLastLogin = function () {
   this.lastLogin = new Date();
+  return this.save();
+};
+
+// Instance method to update refresh token
+userSchema.methods.updateRefreshToken = function (refreshToken) {
+  this.refreshToken = refreshToken;
+  return this.save();
+};
+
+// Instance method to clear refresh token
+userSchema.methods.clearRefreshToken = function () {
+  this.refreshToken = null;
   return this.save();
 };
 

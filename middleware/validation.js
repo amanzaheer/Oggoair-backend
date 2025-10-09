@@ -137,6 +137,17 @@ const changePasswordValidation = [
   handleValidationErrors
 ];
 
+// Refresh token validation
+const refreshTokenValidation = [
+  body('refreshToken')
+    .notEmpty()
+    .withMessage('Refresh token is required')
+    .isString()
+    .withMessage('Refresh token must be a string'),
+
+  handleValidationErrors
+];
+
 // Permission validation rules for CREATE
 const validatePermission = [
   body('permissionName')
@@ -272,6 +283,7 @@ module.exports = {
   loginValidation,
   updateUserValidation,
   changePasswordValidation,
+  refreshTokenValidation,
   validatePermission,
   validatePermissionUpdate,
   validateSubPermission,

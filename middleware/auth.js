@@ -55,7 +55,7 @@ const protect = async (req, res, next) => {
         message: 'Your token has expired. Please log in again.'
       });
     }
-    
+
     console.error('Auth middleware error:', error);
     return res.status(500).json({
       status: 'error',
@@ -89,12 +89,12 @@ const optionalAuth = async (req, res, next) => {
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const currentUser = await User.findById(decoded.id);
-      
+
       if (currentUser && currentUser.isActive) {
         req.user = currentUser;
       }
     }
-    
+
     next();
   } catch (error) {
     // Continue without authentication if token is invalid

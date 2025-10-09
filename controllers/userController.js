@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { generateToken } = require('../utils/jwtUtils');
+const { generateToken, generateRefreshToken, verifyToken } = require('../utils/jwtUtils');
 
 // Register a new user
 const signup = async (req, res) => {
@@ -71,14 +71,18 @@ const login = async (req, res) => {
     }
 
     const token = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
     await user.updateLastLogin();
+    await user.updateRefreshToken(refreshToken);
 
     res.status(200).json({
       status: 'success',
       message: 'Login successful',
       data: {
         user: user.profile,
-        token
+        token,
+        refreshToken
       }
     });
   } catch (error) {
@@ -96,12 +100,17 @@ const getMe = async (req, res) => {
     // Populate assigned role for current user
     const user = await User.findById(req.user._id)
       .populate('assignedRole', 'name displayName description permissions isActive')
-      .select('-password');
+      .select('+refreshToken');
+
+    // Generate new access token
+    const token = generateToken(user._id);
 
     res.status(200).json({
       status: 'success',
       data: {
-        user: user.profile
+        user: user.profile,
+        token,
+        refreshToken: user.refreshToken
       }
     });
   } catch (error) {
@@ -308,6 +317,102 @@ const changePassword = async (req, res) => {
   }
 };
 
+// Refresh token
+const refreshToken = async (req, res) => {
+  try {
+    console.log('=== Refresh Token Debug ===');
+    console.log('Request headers:', req.headers);
+    console.log('Request body:', req.body);
+    console.log('Request body type:', typeof req.body);
+    console.log('Request body keys:', Object.keys(req.body || {}));
+    console.log('Content-Type header:', req.headers['content-type']);
+
+    const { refreshToken } = req.body;
+
+
+    if (!refreshToken) {
+      console.log('ERROR: No refresh token found in request body');
+      return res.status(401).json({
+        status: 'error',
+        message: 'Refresh token is required'
+      });
+    }
+
+    // Verify refresh token
+    let decoded;
+    try {
+      decoded = verifyToken(refreshToken);
+    } catch (error) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid or expired refresh token'
+      });
+    }
+
+    // Find user with this refresh token
+    const user = await User.findById(decoded.id).select('+refreshToken');
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'User not found or account deactivated'
+      });
+    }
+
+    // Check if refresh token matches
+    if (user.refreshToken !== refreshToken) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid refresh token'
+      });
+    }
+
+    // Generate new tokens
+    const newToken = generateToken(user._id);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    // Update refresh token in database
+    await user.updateRefreshToken(newRefreshToken);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Token refreshed successfully',
+      data: {
+        token: newToken,
+        refreshToken: newRefreshToken
+      }
+    });
+  } catch (error) {
+    console.error('Refresh token error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error refreshing token'
+    });
+  }
+};
+
+// Logout (clear refresh token)
+const logout = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (user) {
+      await user.clearRefreshToken();
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error during logout'
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -316,5 +421,7 @@ module.exports = {
   getUserById,
   updateUser,
   deleteUser,
-  changePassword
+  changePassword,
+  refreshToken,
+  logout
 };
