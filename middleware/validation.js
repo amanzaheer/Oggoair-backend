@@ -63,6 +63,11 @@ const signupValidation = [
     .isIn(['user', 'admin'])
     .withMessage('Role must be either user or admin'),
 
+  body('assignedRole')
+    .optional()
+    .isMongoId()
+    .withMessage('assignedRole must be a valid role id'),
+
   handleValidationErrors
 ];
 
@@ -114,6 +119,11 @@ const updateUserValidation = [
     .isIn(['user', 'admin'])
     .withMessage('Role must be either user or admin'),
 
+  body('assignedRole')
+    .optional()
+    .isMongoId()
+    .withMessage('assignedRole must be a valid role id'),
+
   body('isActive')
     .optional()
     .isBoolean()
@@ -122,12 +132,8 @@ const updateUserValidation = [
   handleValidationErrors
 ];
 
-// Change password validation
+// Change password validation (only requires newPassword)
 const changePasswordValidation = [
-  body('currentPassword')
-    .notEmpty()
-    .withMessage('Current password is required'),
-
   body('newPassword')
     .notEmpty()
     .withMessage('New password is required')

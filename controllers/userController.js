@@ -1,10 +1,11 @@
 const User = require('../models/User');
+const Role = require('../models/Role');
 const { generateToken, generateRefreshToken, verifyToken } = require('../utils/jwtUtils');
 
 // Register a new user
 const signup = async (req, res) => {
   try {
-    const { fullName, username, email, phone, password, role } = req.body;
+    const { fullName, username, email, phone, password, role, assignedRole } = req.body;
 
     const existingUser = await User.findOne({
       $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }]
@@ -19,13 +20,33 @@ const signup = async (req, res) => {
       });
     }
 
+    // If assignedRole provided, validate it exists and is active
+    let assignedRoleId = null;
+    if (assignedRole) {
+      const roleDoc = await Role.findById(assignedRole);
+      if (!roleDoc) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Assigned role not found'
+        });
+      }
+      if (!roleDoc.isActive) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Cannot assign inactive role to user'
+        });
+      }
+      assignedRoleId = roleDoc._id;
+    }
+
     const user = await User.create({
       fullName,
       username: username.toLowerCase(),
       email: email.toLowerCase(),
       phone,
       password,
-      role: role || 'user'
+      role: role || 'user',
+      assignedRole: assignedRoleId
     });
 
     const token = generateToken(user._id);
@@ -99,7 +120,6 @@ const getMe = async (req, res) => {
   try {
     // Populate assigned role for current user
     const user = await User.findById(req.user._id)
-      .populate('assignedRole', 'name displayName description permissions isActive')
       .select('+refreshToken');
 
     // Generate new access token
@@ -140,7 +160,6 @@ const getAllUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
-      .populate('assignedRole', 'name displayName description permissions isActive')
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -172,7 +191,7 @@ const getAllUsers = async (req, res) => {
 const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .populate('assignedRole', 'name displayName description permissions isActive')
+      // do not populate to keep assignedRole as id in response
       .select('-password');
 
     if (!user) {
@@ -199,7 +218,7 @@ const getUserById = async (req, res) => {
 // Update user
 const updateUser = async (req, res) => {
   try {
-    const { fullName, email, phone, role, isActive } = req.body;
+    const { fullName, email, phone, role, isActive, assignedRole } = req.body;
     const userId = req.params.id;
 
     const user = await User.findById(userId);
@@ -228,6 +247,17 @@ const updateUser = async (req, res) => {
     }
 
     const updateData = { fullName, email, phone };
+    // Allow updating assignedRole if provided and requester is admin
+    if (req.user.role === 'admin' && assignedRole !== undefined) {
+      const roleDoc = await Role.findById(assignedRole);
+      if (!roleDoc) {
+        return res.status(400).json({ status: 'error', message: 'Assigned role not found' });
+      }
+      if (!roleDoc.isActive) {
+        return res.status(400).json({ status: 'error', message: 'Cannot assign inactive role to user' });
+      }
+      updateData.assignedRole = roleDoc._id;
+    }
     if (req.user.role === 'admin') {
       if (role !== undefined) updateData.role = role;
       if (isActive !== undefined) updateData.isActive = isActive;
@@ -290,17 +320,9 @@ const deleteUser = async (req, res) => {
 // Change password
 const changePassword = async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
+    const { newPassword } = req.body;
 
     const user = await User.findById(req.user._id).select('+password');
-
-    const isPasswordCorrect = await user.correctPassword(currentPassword, user.password);
-    if (!isPasswordCorrect) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Current password is incorrect'
-      });
-    }
 
     user.password = newPassword;
     await user.save();

@@ -269,7 +269,8 @@ const deleteRole = async (req, res) => {
         }
 
         // Check if any users are assigned this role
-        const usersWithRole = await User.countDocuments({ roles: role._id });
+        // Users store single assignedRole, not array "roles"
+        const usersWithRole = await User.countDocuments({ assignedRole: role._id });
         if (usersWithRole > 0) {
             return res.status(400).json({
                 status: 'error',
@@ -410,7 +411,7 @@ const getRoleStats = async (req, res) => {
                 $lookup: {
                     from: 'users',
                     localField: '_id',
-                    foreignField: 'roles',
+                    foreignField: 'assignedRole',
                     as: 'users'
                 }
             },
