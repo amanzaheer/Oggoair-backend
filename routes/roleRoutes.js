@@ -92,7 +92,7 @@ router.get('/stats', restrictTo('admin'), roleController.getRoleStats);
 router.post('/assign-user-role', restrictTo('admin'), validateUserRoleAssignment, roleController.assignUserRole);
 
 // Parameterized routes (Admin only)
-router.get('/:id', restrictTo('admin'), roleController.getRoleById);
+router.get('/:id', roleController.getRoleById);
 router.get('/name/:name', restrictTo('admin'), roleController.getRoleByName);
 router.put('/:id', restrictTo('admin'), validateUpdateRole, roleController.updateRole);
 router.delete('/:id', restrictTo('admin'), roleController.deleteRole);
