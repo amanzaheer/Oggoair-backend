@@ -52,11 +52,16 @@ const signup = async (req, res) => {
     const token = generateToken(user._id);
     await user.updateLastLogin();
 
+    // Populate the assignedRole to get full role object
+    const userWithRole = await User.findById(user._id)
+      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .select('-password -refreshToken');
+
     res.status(201).json({
       status: 'success',
       message: 'User registered successfully',
       data: {
-        user: user.profile,
+        user: userWithRole.profile,
         token
       }
     });
@@ -97,11 +102,16 @@ const login = async (req, res) => {
     await user.updateLastLogin();
     await user.updateRefreshToken(refreshToken);
 
+    // Populate the assignedRole to get full role object
+    const userWithRole = await User.findById(user._id)
+      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .select('-password -refreshToken');
+
     res.status(200).json({
       status: 'success',
       message: 'Login successful',
       data: {
-        user: user.profile,
+        user: userWithRole.profile,
         token,
         refreshToken
       }
@@ -120,6 +130,7 @@ const getMe = async (req, res) => {
   try {
     // Populate assigned role for current user
     const user = await User.findById(req.user._id)
+      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
       .select('+refreshToken');
 
     // Generate new access token

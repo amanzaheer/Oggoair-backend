@@ -76,8 +76,16 @@ userSchema.virtual('profile').get(function () {
     email: this.email,
     phone: this.phone,
     role: this.role,
-    // Always expose assignedRole as the id (ObjectId), even if populated
-    assignedRole: this.assignedRole && this.assignedRole._id ? this.assignedRole._id : this.assignedRole,
+    // Return full role object if populated, otherwise return just the ID
+    assignedRole: this.assignedRole && this.assignedRole._id ? {
+      id: this.assignedRole._id,
+      name: this.assignedRole.name,
+      displayName: this.assignedRole.displayName,
+      description: this.assignedRole.description,
+      permissions: this.assignedRole.permissions,
+      isActive: this.assignedRole.isActive,
+      isSystemRole: this.assignedRole.isSystemRole
+    } : this.assignedRole,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
     createdAt: this.createdAt,
