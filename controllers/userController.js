@@ -171,6 +171,7 @@ const getAllUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
+      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -181,7 +182,7 @@ const getAllUsers = async (req, res) => {
     res.status(200).json({
       status: 'success',
       data: {
-        users,
+        users: users.map(user => user.profile),
         pagination: {
           page,
           limit,
@@ -202,7 +203,7 @@ const getAllUsers = async (req, res) => {
 const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      // do not populate to keep assignedRole as id in response
+      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
       .select('-password');
 
     if (!user) {
@@ -278,7 +279,9 @@ const updateUser = async (req, res) => {
       userId,
       updateData,
       { new: true, runValidators: true }
-    ).select('-password');
+    )
+      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .select('-password');
 
     res.status(200).json({
       status: 'success',

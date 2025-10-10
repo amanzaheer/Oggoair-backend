@@ -487,7 +487,7 @@ const assignUserRole = async (req, res) => {
 
         // Get updated user with populated role
         const updatedUser = await User.findById(userId)
-            .populate('assignedRole', 'name displayName description permissions isActive')
+            .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
             .select('-password');
 
         res.status(200).json({
