@@ -27,7 +27,11 @@ const signup = async (req, res) => {
       });
     }
 
-    // If assignedRole provided, validate it exists and is active
+    // Role priority logic: assignedRole takes priority over role key
+    let finalRole = role || 'user';
+    let finalAssignedRole = null;
+
+    // If assignedRole provided, validate it and use it (ignore role key)
     if (assignedRole) {
       const roleDoc = await Role.findById(assignedRole);
       if (!roleDoc) {
@@ -42,6 +46,9 @@ const signup = async (req, res) => {
           message: 'Cannot assign inactive role to user'
         });
       }
+      // Use role from assignedRole, ignore role key
+      finalRole = roleDoc.name;
+      finalAssignedRole = assignedRole;
     }
 
     // Store user data temporarily in OTP record
@@ -51,8 +58,8 @@ const signup = async (req, res) => {
       email: email.toLowerCase(),
       phone,
       password,
-      role: role || 'user',
-      assignedRole: assignedRole || null
+      role: finalRole,
+      assignedRole: finalAssignedRole
     };
 
     // Generate and store OTP
@@ -92,11 +99,6 @@ const signup = async (req, res) => {
 // Verify OTP and complete signup
 const verifySignupOTP = async (req, res) => {
   try {
-    console.log('========================================');
-    console.log('✅ VERIFY OTP ENDPOINT HIT!');
-    console.log('Request body:', req.body);
-    console.log('========================================');
-
     const { email, otp } = req.body;
 
     // Validate required fields

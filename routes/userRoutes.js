@@ -16,7 +16,6 @@ const {
 
 // Public routes
 // Verify OTP and complete signup (MUST BE BEFORE /signup route)
-console.log('📍 Registering route: POST /api/users/signup/verify-otp');
 router.post('/signup/verify-otp', userController.verifySignupOTP);
 
 // Signup - sends OTP to email

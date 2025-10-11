@@ -481,8 +481,9 @@ const assignUserRole = async (req, res) => {
             });
         }
 
-        // Assign role to user
+        // Assign role to user and update role field with role name
         user.assignedRole = roleId;
+        user.role = role.name;  // ✅ Update role field to match assignedRole name
         await user.save();
 
         // Get updated user with populated role
