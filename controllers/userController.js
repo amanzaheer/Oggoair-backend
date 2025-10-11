@@ -1,27 +1,33 @@
 const User = require('../models/User');
 const Role = require('../models/Role');
+const OTP = require('../models/OTP');
 const { generateToken, generateRefreshToken, verifyToken } = require('../utils/jwtUtils');
+const { sendOTPEmail } = require('../utils/emailService');
 
-// Register a new user
+// Register a new user (sends OTP for verification)
 const signup = async (req, res) => {
   try {
     const { fullName, username, email, phone, password, role, assignedRole } = req.body;
 
-    const existingUser = await User.findOne({
-      $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }]
-    });
-
-    if (existingUser) {
+    // Check if username already exists
+    const existingUsername = await User.findOne({ username: username.toLowerCase() });
+    if (existingUsername) {
       return res.status(400).json({
         status: 'error',
-        message: existingUser.username === username.toLowerCase()
-          ? 'Username already exists'
-          : 'Email already exists'
+        message: 'Username already exists. Please choose a different username.'
+      });
+    }
+
+    // Check if email already exists
+    const existingEmail = await User.findOne({ email: email.toLowerCase() });
+    if (existingEmail) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email already registered. Please use a different email or login.'
       });
     }
 
     // If assignedRole provided, validate it exists and is active
-    let assignedRoleId = null;
     if (assignedRole) {
       const roleDoc = await Role.findById(assignedRole);
       if (!roleDoc) {
@@ -36,19 +42,126 @@ const signup = async (req, res) => {
           message: 'Cannot assign inactive role to user'
         });
       }
-      assignedRoleId = roleDoc._id;
     }
 
-    const user = await User.create({
+    // Store user data temporarily in OTP record
+    const signupData = {
       fullName,
       username: username.toLowerCase(),
       email: email.toLowerCase(),
       phone,
       password,
       role: role || 'user',
-      assignedRole: assignedRoleId
+      assignedRole: assignedRole || null
+    };
+
+    // Generate and store OTP
+    const otpRecord = await OTP.createOTP(email.toLowerCase(), 'registration', signupData);
+
+    // Send OTP email
+    const emailResult = await sendOTPEmail(email, otpRecord.otp);
+
+    if (!emailResult.success) {
+      console.error('Email sending failed:', emailResult.error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to send OTP email. Please try again.'
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'OTP sent to your email. Please verify to complete registration.',
+      data: {
+        email: email.toLowerCase(),
+        expiresIn: '10 minutes'
+      }
     });
 
+  } catch (error) {
+    console.error('Signup error:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error processing signup request',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Verify OTP and complete signup
+const verifySignupOTP = async (req, res) => {
+  try {
+    console.log('========================================');
+    console.log('✅ VERIFY OTP ENDPOINT HIT!');
+    console.log('Request body:', req.body);
+    console.log('========================================');
+
+    const { email, otp } = req.body;
+
+    // Validate required fields
+    if (!email || !otp) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email and OTP are required'
+      });
+    }
+
+    console.log('Verifying OTP and creating user');
+
+    // Find valid OTP
+    const otpRecord = await OTP.findValidOTP(email.toLowerCase(), 'registration');
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid or expired OTP. Please request a new OTP.'
+      });
+    }
+
+    // Verify OTP
+    const verification = otpRecord.verifyOTP(otp);
+    if (!verification.valid) {
+      return res.status(400).json({
+        status: 'error',
+        message: verification.message
+      });
+    }
+
+    // Get signup data from OTP record
+    const signupData = otpRecord.userData;
+
+    // Double-check username and email are still unique (race condition protection)
+    const existingUser = await User.findOne({
+      $or: [
+        { username: signupData.username },
+        { email: signupData.email }
+      ]
+    });
+
+    if (existingUser) {
+      await OTP.findByIdAndDelete(otpRecord._id);
+      return res.status(400).json({
+        status: 'error',
+        message: existingUser.username === signupData.username
+          ? 'Username already exists'
+          : 'Email already registered'
+      });
+    }
+
+    // Create user
+    const user = await User.create({
+      fullName: signupData.fullName,
+      username: signupData.username,
+      email: signupData.email,
+      phone: signupData.phone,
+      password: signupData.password,
+      role: signupData.role,
+      assignedRole: signupData.assignedRole,
+      isEmailVerified: true // Mark email as verified since they verified OTP
+    });
+
+    // Generate token
     const token = generateToken(user._id);
     await user.updateLastLogin();
 
@@ -57,19 +170,25 @@ const signup = async (req, res) => {
       .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
       .select('-password -refreshToken');
 
+    // Delete the used OTP record
+    await OTP.findByIdAndDelete(otpRecord._id);
+
     res.status(201).json({
       status: 'success',
-      message: 'User registered successfully',
+      message: 'Registration successful! Welcome to Oggoair.',
       data: {
         user: userWithRole.profile,
         token
       }
     });
+
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('Verify signup OTP error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       status: 'error',
-      message: 'Error creating user'
+      message: 'Error completing registration',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -451,6 +570,7 @@ const logout = async (req, res) => {
 
 module.exports = {
   signup,
+  verifySignupOTP,
   login,
   getMe,
   getAllUsers,

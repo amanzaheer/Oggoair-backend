@@ -15,7 +15,14 @@ const {
 } = require('../middleware/validation');
 
 // Public routes
+// Verify OTP and complete signup (MUST BE BEFORE /signup route)
+console.log('📍 Registering route: POST /api/users/signup/verify-otp');
+router.post('/signup/verify-otp', userController.verifySignupOTP);
+
+// Signup - sends OTP to email
 router.post('/signup', signupValidation, userController.signup);
+
+// Login and token management
 router.post('/login', loginValidation, userController.login);
 router.post('/refresh-token', refreshTokenValidation, userController.refreshToken);
 
