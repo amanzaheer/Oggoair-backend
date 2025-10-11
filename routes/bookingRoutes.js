@@ -125,8 +125,9 @@ router.post('/verify-otp', verifyBookingOTP);
 // All routes below require authentication
 router.use(protect);
 
-// Create a new booking (authenticated users only)
-router.post('/', validateCreateBooking, createBooking);
+// Admin only routes (MUST BE BEFORE other routes to avoid conflicts)
+router.get('/stats/overview', restrictTo('admin'), getBookingStats);
+router.get('/', restrictTo('admin'), getAllBookings);
 
 // Get current user's bookings
 router.get('/my-bookings', getMyBookings);
@@ -137,6 +138,9 @@ router.get('/reference/:reference', getBookingByReference);
 // Get booking by ID
 router.get('/:id', getBookingById);
 
+// Create a new booking (authenticated users only)
+router.post('/', validateCreateBooking, createBooking);
+
 // Update booking
 router.put('/:id', validateUpdateBooking, updateBooking);
 
@@ -145,9 +149,5 @@ router.patch('/:id/status', validateUpdateStatus, updateBookingStatus);
 
 // Delete booking
 router.delete('/:id', deleteBooking);
-
-// Admin only routes
-router.get('/', restrictTo('admin'), getAllBookings);
-router.get('/stats/overview', restrictTo('admin'), getBookingStats);
 
 module.exports = router;
