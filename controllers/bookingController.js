@@ -1,4 +1,241 @@
 const PassengerBooking = require('../models/PassengerBooking');
+const OTP = require('../models/OTP');
+const User = require('../models/User');
+const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
+const { generateToken } = require('../utils/jwtUtils');
+
+// Step 1: Request booking and send OTP to email
+const requestBookingWithOTP = async (req, res) => {
+    try {
+        console.log('Requesting booking with OTP:', req.body);
+        const { email, fullName, phone, passengers, notes, flightData, extraServices } = req.body;
+
+        // Validate required fields
+        if (!email || !fullName) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Email and full name are required'
+            });
+        }
+
+        // Validate that at least one passenger is provided
+        if (!passengers || passengers.length === 0) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'At least one passenger is required'
+            });
+        }
+
+        // Validate passenger data
+        for (let i = 0; i < passengers.length; i++) {
+            const passenger = passengers[i];
+            if (!passenger.title || !passenger.firstName || !passenger.lastName) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: `Passenger ${i + 1}: Title, first name, and last name are required`
+                });
+            }
+            if (!passenger.dateOfBirth || !passenger.dateOfBirth.day || !passenger.dateOfBirth.month || !passenger.dateOfBirth.year) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: `Passenger ${i + 1}: Complete date of birth is required`
+                });
+            }
+            if (!passenger.countryOfResidence || !passenger.passportNumber) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: `Passenger ${i + 1}: Country of residence and passport number are required`
+                });
+            }
+            if (!passenger.passportExpiry || !passenger.passportExpiry.day || !passenger.passportExpiry.month || !passenger.passportExpiry.year) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: `Passenger ${i + 1}: Complete passport expiry date is required`
+                });
+            }
+        }
+
+        // Store booking data temporarily with OTP
+        const bookingData = {
+            email: email.toLowerCase(),
+            fullName,
+            phone,
+            passengers,
+            notes,
+            flightData,
+            extraServices
+        };
+
+        // Create OTP record
+        const otpRecord = await OTP.createOTP(email.toLowerCase(), 'booking', bookingData);
+
+        // Send OTP email
+        const emailResult = await sendOTPEmail(email, otpRecord.otp);
+
+        if (!emailResult.success) {
+            // If email fails, delete the OTP record
+            await OTP.findByIdAndDelete(otpRecord._id);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Failed to send OTP email. Please try again.'
+            });
+        }
+
+        res.status(200).json({
+            status: 'success',
+            message: 'OTP sent to your email. Please verify to complete booking.',
+            data: {
+                email: email,
+                expiresAt: otpRecord.expiresAt,
+                message: 'Please check your email for the 4-digit OTP code'
+            }
+        });
+
+    } catch (error) {
+        console.error('Request booking with OTP error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error processing booking request',
+            error: error.message
+        });
+    }
+};
+
+// Step 2: Verify OTP, auto-register user, and create booking
+const verifyBookingOTP = async (req, res) => {
+    try {
+        console.log('Verifying OTP and completing booking:', req.body);
+        const { email, otp } = req.body;
+
+        // Validate required fields
+        if (!email || !otp) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Email and OTP are required'
+            });
+        }
+
+        // Find valid OTP record
+        const otpRecord = await OTP.findValidOTP(email.toLowerCase(), 'booking');
+
+        if (!otpRecord) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid or expired OTP. Please request a new one.'
+            });
+        }
+
+        // Verify OTP
+        const verification = otpRecord.verifyOTP(otp);
+
+        if (!verification.valid) {
+            return res.status(400).json({
+                status: 'error',
+                message: verification.message
+            });
+        }
+
+        // Get booking data from OTP record
+        const bookingData = otpRecord.userData;
+
+        if (!bookingData) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Booking data not found. Please start the booking process again.'
+            });
+        }
+
+        // Check if user exists
+        let user = await User.findOne({ email: bookingData.email });
+        let isNewUser = false;
+        let generatedPassword = null;
+
+        // If user doesn't exist, create automatically
+        if (!user) {
+            console.log('User not found, creating new user automatically...');
+
+            // Generate username from email
+            const baseUsername = bookingData.email.split('@')[0];
+            const username = baseUsername + Math.floor(Math.random() * 1000);
+
+            // Create secure random password
+            generatedPassword = 'Pass@' + Math.floor(100000 + Math.random() * 900000);
+
+            user = await User.create({
+                fullName: bookingData.fullName,
+                username: username.toLowerCase(),
+                email: bookingData.email,
+                phone: bookingData.phone.dialingCode + bookingData.phone.number,
+                password: generatedPassword,
+                role: 'user'
+            });
+
+            isNewUser = true;
+            console.log('New user created:', user.username);
+
+            // Send welcome email with credentials
+            await sendWelcomeEmail(user.email, user.fullName, user.username, generatedPassword);
+        }
+
+        // Create booking
+        console.log('Creating booking for user:', user._id);
+        const booking = await PassengerBooking.create({
+            user: user._id,
+            email: bookingData.email,
+            phone: bookingData.phone,
+            passengers: bookingData.passengers,
+            notes: bookingData.notes,
+            flightData: bookingData.flightData,
+            extraServices: bookingData.extraServices
+        });
+        console.log('Booking created successfully:', booking.bookingReference);
+
+        // Update user last login
+        await user.updateLastLogin();
+
+        // Generate token
+        const token = generateToken(user._id);
+
+        // Populate user data with full assignedRole object
+        const userWithRole = await User.findById(user._id)
+            .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+            .select('-password -refreshToken');
+
+        // Delete the used OTP record
+        await OTP.findByIdAndDelete(otpRecord._id);
+
+        res.status(201).json({
+            status: 'success',
+            message: isNewUser
+                ? 'Booking created successfully! Your account has been automatically created. Check your email for login credentials.'
+                : 'Booking created successfully!',
+            data: {
+                booking: {
+                    ...booking.summary,
+                    email: booking.email,
+                    phone: booking.phone,
+                    notes: booking.notes ?? null,
+                    flightData: booking.flightData ?? null,
+                    extraServices: booking.extraServices ?? null
+                },
+                passengers: booking.passengers,
+                user: userWithRole.profile,
+                token,
+                isNewUser
+            }
+        });
+
+    } catch (error) {
+        console.error('Verify booking OTP error:', error);
+        console.error('Error stack:', error.stack);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error completing booking',
+            error: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+};
 
 // Create a new passenger booking
 const createBooking = async (req, res) => {
@@ -460,6 +697,8 @@ const getBookingStats = async (req, res) => {
 
 module.exports = {
     createBooking,
+    requestBookingWithOTP,
+    verifyBookingOTP,
     getMyBookings,
     getAllBookings,
     getBookingById,
