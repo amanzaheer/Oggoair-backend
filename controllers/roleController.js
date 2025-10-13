@@ -63,10 +63,6 @@ const createRole = async (req, res) => {
 // Get all roles
 const getAllRoles = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
-
         const filter = {};
 
         // Filter by active status
@@ -91,22 +87,12 @@ const getAllRoles = async (req, res) => {
         const roles = await Role.find(filter)
             .populate('createdBy', 'fullName username email')
             .populate('updatedBy', 'fullName username email')
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit);
-
-        const total = await Role.countDocuments(filter);
+            .sort({ createdAt: -1 });
 
         res.status(200).json({
             status: 'success',
             data: {
-                roles,
-                pagination: {
-                    page,
-                    limit,
-                    total,
-                    pages: Math.ceil(total / limit)
-                }
+                roles
             }
         });
     } catch (error) {
