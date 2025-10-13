@@ -4,7 +4,7 @@ const User = require('../models/User');
 // Create a new role
 const createRole = async (req, res) => {
     try {
-        const { name, displayName, description, permissions, isSystemRole } = req.body;
+        const { name, permissions } = req.body;
 
         // Check if role with same name already exists
         const existingRole = await Role.findByName(name);
@@ -25,11 +25,7 @@ const createRole = async (req, res) => {
 
         const roleData = {
             name,
-            displayName,
-            description,
-            permissions,
-            isSystemRole: isSystemRole || false,
-            createdBy: req.user._id
+            permissions
         };
 
         const role = await Role.create(roleData);
@@ -38,7 +34,7 @@ const createRole = async (req, res) => {
             status: 'success',
             message: 'Role created successfully',
             data: {
-                role: role.summary
+                role
             }
         });
     } catch (error) {
@@ -65,28 +61,12 @@ const getAllRoles = async (req, res) => {
     try {
         const filter = {};
 
-        // Filter by active status
-        if (req.query.isActive !== undefined) {
-            filter.isActive = req.query.isActive === 'true';
-        }
-
-        // Filter by system role
-        if (req.query.isSystemRole !== undefined) {
-            filter.isSystemRole = req.query.isSystemRole === 'true';
-        }
-
-        // Search by name or display name
+        // Search by name
         if (req.query.search) {
-            filter.$or = [
-                { name: { $regex: req.query.search, $options: 'i' } },
-                { displayName: { $regex: req.query.search, $options: 'i' } },
-                { description: { $regex: req.query.search, $options: 'i' } }
-            ];
+            filter.name = { $regex: req.query.search, $options: 'i' };
         }
 
         const roles = await Role.find(filter)
-            .populate('createdBy', 'fullName username email')
-            .populate('updatedBy', 'fullName username email')
             .sort({ createdAt: -1 });
 
         res.status(200).json({
@@ -107,9 +87,7 @@ const getAllRoles = async (req, res) => {
 // Get role by ID
 const getRoleById = async (req, res) => {
     try {
-        const role = await Role.findById(req.params.id)
-            .populate('createdBy', 'fullName username email')
-            .populate('updatedBy', 'fullName username email');
+        const role = await Role.findById(req.params.id);
 
         if (!role) {
             return res.status(404).json({
@@ -136,9 +114,7 @@ const getRoleById = async (req, res) => {
 // Get role by name
 const getRoleByName = async (req, res) => {
     try {
-        const role = await Role.findByName(req.params.name)
-            .populate('createdBy', 'fullName username email')
-            .populate('updatedBy', 'fullName username email');
+        const role = await Role.findByName(req.params.name);
 
         if (!role) {
             return res.status(404).json({
@@ -165,7 +141,7 @@ const getRoleByName = async (req, res) => {
 // Update role
 const updateRole = async (req, res) => {
     try {
-        const { displayName, description, permissions, isActive } = req.body;
+        const { permissions } = req.body;
         const roleId = req.params.id;
 
         const role = await Role.findById(roleId);
@@ -173,14 +149,6 @@ const updateRole = async (req, res) => {
             return res.status(404).json({
                 status: 'error',
                 message: 'Role not found'
-            });
-        }
-
-        // Prevent updating system roles (except isActive)
-        if (role.isSystemRole && (displayName || description || permissions)) {
-            return res.status(403).json({
-                status: 'error',
-                message: 'Cannot modify system role properties. Only active status can be changed.'
             });
         }
 
@@ -192,21 +160,15 @@ const updateRole = async (req, res) => {
             });
         }
 
-        const updateData = {
-            updatedBy: req.user._id
-        };
+        const updateData = {};
 
-        if (displayName) updateData.displayName = displayName;
-        if (description) updateData.description = description;
         if (permissions) updateData.permissions = permissions;
-        if (isActive !== undefined) updateData.isActive = isActive;
 
         const updatedRole = await Role.findByIdAndUpdate(
             roleId,
             updateData,
             { new: true, runValidators: true }
-        ).populate('createdBy', 'fullName username email')
-            .populate('updatedBy', 'fullName username email');
+        );
 
         res.status(200).json({
             status: 'success',
@@ -246,16 +208,7 @@ const deleteRole = async (req, res) => {
             });
         }
 
-        // Check if role can be deleted
-        if (!role.canBeDeleted()) {
-            return res.status(403).json({
-                status: 'error',
-                message: 'System roles cannot be deleted'
-            });
-        }
-
         // Check if any users are assigned this role
-        // Users store single assignedRole, not array "roles"
         const usersWithRole = await User.countDocuments({ assignedRole: role._id });
         if (usersWithRole > 0) {
             return res.status(400).json({
@@ -293,13 +246,6 @@ const addPermissionToRole = async (req, res) => {
             });
         }
 
-        if (role.isSystemRole) {
-            return res.status(403).json({
-                status: 'error',
-                message: 'Cannot modify permissions of system roles'
-            });
-        }
-
         if (role.hasPermission(permission)) {
             return res.status(400).json({
                 status: 'error',
@@ -308,14 +254,12 @@ const addPermissionToRole = async (req, res) => {
         }
 
         await role.addPermission(permission);
-        role.updatedBy = req.user._id;
-        await role.save();
 
         res.status(200).json({
             status: 'success',
             message: 'Permission added to role successfully',
             data: {
-                role: role.summary
+                role
             }
         });
     } catch (error) {
@@ -341,13 +285,6 @@ const removePermissionFromRole = async (req, res) => {
             });
         }
 
-        if (role.isSystemRole) {
-            return res.status(403).json({
-                status: 'error',
-                message: 'Cannot modify permissions of system roles'
-            });
-        }
-
         if (!role.hasPermission(permission)) {
             return res.status(400).json({
                 status: 'error',
@@ -364,14 +301,12 @@ const removePermissionFromRole = async (req, res) => {
         }
 
         await role.removePermission(permission);
-        role.updatedBy = req.user._id;
-        await role.save();
 
         res.status(200).json({
             status: 'success',
             message: 'Permission removed from role successfully',
             data: {
-                role: role.summary
+                role
             }
         });
     } catch (error) {
@@ -387,9 +322,6 @@ const removePermissionFromRole = async (req, res) => {
 const getRoleStats = async (req, res) => {
     try {
         const totalRoles = await Role.countDocuments();
-        const activeRoles = await Role.countDocuments({ isActive: true });
-        const systemRoles = await Role.countDocuments({ isSystemRole: true });
-        const customRoles = await Role.countDocuments({ isSystemRole: false });
 
         // Get roles with user counts
         const rolesWithUserCounts = await Role.aggregate([
@@ -404,10 +336,7 @@ const getRoleStats = async (req, res) => {
             {
                 $project: {
                     name: 1,
-                    displayName: 1,
-                    userCount: { $size: '$users' },
-                    isActive: 1,
-                    isSystemRole: 1
+                    userCount: { $size: '$users' }
                 }
             },
             {
@@ -419,10 +348,7 @@ const getRoleStats = async (req, res) => {
             status: 'success',
             data: {
                 stats: {
-                    totalRoles,
-                    activeRoles,
-                    systemRoles,
-                    customRoles
+                    totalRoles
                 },
                 rolesWithUserCounts
             }
@@ -450,14 +376,6 @@ const assignUserRole = async (req, res) => {
             });
         }
 
-        // Check if role is active
-        if (!role.isActive) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'Cannot assign inactive role to user'
-            });
-        }
-
         // Check if user exists
         const user = await User.findById(userId);
         if (!user) {
@@ -469,17 +387,17 @@ const assignUserRole = async (req, res) => {
 
         // Assign role to user and update role field with role name
         user.assignedRole = roleId;
-        user.role = role.name;  // ✅ Update role field to match assignedRole name
+        user.role = role.name;
         await user.save();
 
         // Get updated user with populated role
         const updatedUser = await User.findById(userId)
-            .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+            .populate('assignedRole', 'name permissions')
             .select('-password');
 
         res.status(200).json({
             status: 'success',
-            message: `Role "${role.displayName}" assigned to user successfully`,
+            message: `Role "${role.name}" assigned to user successfully`,
             data: {
                 user: updatedUser.profile
             }
