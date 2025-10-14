@@ -56,7 +56,7 @@ const signup = async (req, res) => {
       data: {
         email: email.toLowerCase(),
         isLogin,
-        expiresIn: '10 minutes'
+        expiresIn: '3 minutes'
       }
     });
 
