@@ -227,9 +227,9 @@ const login = async (req, res) => {
     await user.updateLastLogin();
     await user.updateRefreshToken(refreshToken);
 
-    // Populate the assignedRole to get full role object
+    // Populate the role to get full role object
     const userWithRole = await User.findById(user._id)
-      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .populate('role', 'name permissions')
       .select('-password -refreshToken');
 
     res.status(200).json({
@@ -253,9 +253,9 @@ const login = async (req, res) => {
 // Get current user profile
 const getMe = async (req, res) => {
   try {
-    // Populate assigned role for current user
+    // Populate role for current user
     const user = await User.findById(req.user._id)
-      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .populate('role', 'name permissions')
       .select('+refreshToken');
 
     // Generate new access token
@@ -296,7 +296,7 @@ const getAllUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
-      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .populate('role', 'name permissions')
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -328,7 +328,7 @@ const getAllUsers = async (req, res) => {
 const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .populate('role', 'name permissions')
       .select('-password');
 
     if (!user) {
@@ -355,7 +355,7 @@ const getUserById = async (req, res) => {
 // Update user
 const updateUser = async (req, res) => {
   try {
-    const { fullName, email, phone, role, isActive, assignedRole } = req.body;
+    const { fullName, email, phone, isActive } = req.body;
     const userId = req.params.id;
 
     const user = await User.findById(userId);
@@ -384,19 +384,8 @@ const updateUser = async (req, res) => {
     }
 
     const updateData = { fullName, email, phone };
-    // Allow updating assignedRole if provided and requester is admin
-    if (req.user.role === 'admin' && assignedRole !== undefined) {
-      const roleDoc = await Role.findById(assignedRole);
-      if (!roleDoc) {
-        return res.status(400).json({ status: 'error', message: 'Assigned role not found' });
-      }
-      if (!roleDoc.isActive) {
-        return res.status(400).json({ status: 'error', message: 'Cannot assign inactive role to user' });
-      }
-      updateData.assignedRole = roleDoc._id;
-    }
-    if (req.user.role === 'admin') {
-      if (role !== undefined) updateData.role = role;
+    // Only admin can update isActive
+    if (req.user.type === 'admin') {
       if (isActive !== undefined) updateData.isActive = isActive;
     }
 
@@ -405,7 +394,7 @@ const updateUser = async (req, res) => {
       updateData,
       { new: true, runValidators: true }
     )
-      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .populate('role', 'name permissions')
       .select('-password');
 
     res.status(200).json({
