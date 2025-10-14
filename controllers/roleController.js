@@ -1,10 +1,10 @@
 const Role = require('../models/Role');
 const User = require('../models/User');
 
-// Create a new role
+// Create a new role (without permissions)
 const createRole = async (req, res) => {
     try {
-        const { name, permissions } = req.body;
+        const { name } = req.body;
 
         // Check if role with same name already exists
         const existingRole = await Role.findByName(name);
@@ -15,24 +15,16 @@ const createRole = async (req, res) => {
             });
         }
 
-        // Validate permissions array
-        if (!permissions || !Array.isArray(permissions) || permissions.length === 0) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'Role must have at least one permission'
-            });
-        }
-
         const roleData = {
             name,
-            permissions
+            permissions: [] // Create role with empty permissions
         };
 
         const role = await Role.create(roleData);
 
         res.status(201).json({
             status: 'success',
-            message: 'Role created successfully',
+            message: 'Role created successfully. You can now add permissions to this role.',
             data: {
                 role
             }
@@ -410,6 +402,61 @@ const assignUserRole = async (req, res) => {
     }
 };
 
+// Add permissions to role (menu_permission array)
+const addRolePermissions = async (req, res) => {
+    try {
+        const { roleId, menu_permission } = req.body;
+
+        // Validate roleId
+        if (!roleId) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Role ID is required'
+            });
+        }
+
+        // Validate menu_permission array
+        if (!menu_permission || !Array.isArray(menu_permission)) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'menu_permission must be an array'
+            });
+        }
+
+        // Find role
+        const role = await Role.findById(roleId);
+        if (!role) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Role not found'
+            });
+        }
+
+        // Add permissions to role (remove duplicates)
+        const uniquePermissions = [...new Set([...role.permissions, ...menu_permission])];
+        role.permissions = uniquePermissions;
+        await role.save();
+
+        const message = menu_permission.length > 0
+            ? `${menu_permission.length} permission(s) added to role successfully`
+            : 'Role permissions updated successfully';
+
+        res.status(200).json({
+            status: 'success',
+            message,
+            data: {
+                role
+            }
+        });
+    } catch (error) {
+        console.error('Add role permissions error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error adding permissions to role'
+        });
+    }
+};
+
 module.exports = {
     createRole,
     getAllRoles,
@@ -420,5 +467,6 @@ module.exports = {
     addPermissionToRole,
     removePermissionFromRole,
     getRoleStats,
-    assignUserRole
+    assignUserRole,
+    addRolePermissions
 };

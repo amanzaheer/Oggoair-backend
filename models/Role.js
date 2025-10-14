@@ -24,11 +24,6 @@ roleSchema.pre('save', function (next) {
     // Remove duplicate permissions
     this.permissions = [...new Set(this.permissions)];
 
-    // Validate that permissions are not empty
-    if (this.permissions.length === 0) {
-        return next(new Error('Role must have at least one permission'));
-    }
-
     next();
 });
 

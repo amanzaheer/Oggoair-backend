@@ -8,23 +8,20 @@ const roleController = require('../controllers/roleController');
 // Import middleware
 const { protect, restrictTo } = require('../middleware/auth');
 
-// Validation middleware for creating role
+// Validation middleware for creating role (without permissions)
 const validateCreateRole = [
     body('name')
         .trim()
         .isLength({ min: 2, max: 50 })
-        .withMessage('Role name must be between 2-50 characters'),
-    body('permissions')
-        .isArray({ min: 1 })
-        .withMessage('Role must have at least one permission')
+        .withMessage('Role name must be between 2-50 characters')
 ];
 
 // Validation middleware for updating role
 const validateUpdateRole = [
     body('permissions')
         .optional()
-        .isArray({ min: 1 })
-        .withMessage('Role must have at least one permission')
+        .isArray()
+        .withMessage('Permissions must be an array')
 ];
 
 // Validation middleware for permission operations
@@ -45,6 +42,16 @@ const validateUserRoleAssignment = [
         .withMessage('Valid role ID is required')
 ];
 
+// Validation middleware for adding role permissions
+const validateAddRolePermissions = [
+    body('roleId')
+        .isMongoId()
+        .withMessage('Valid role ID is required'),
+    body('menu_permission')
+        .isArray()
+        .withMessage('menu_permission must be an array')
+];
+
 // All routes require authentication
 router.use(protect);
 
@@ -55,6 +62,9 @@ router.get('/stats', restrictTo('admin'), roleController.getRoleStats);
 
 // User role assignment route (Admin only) - Must be before parameterized routes
 router.post('/assign-user-role', restrictTo('admin'), validateUserRoleAssignment, roleController.assignUserRole);
+
+// Add permissions to role route (Admin only) - Must be before parameterized routes
+router.post('/add-permissions', restrictTo('admin'), validateAddRolePermissions, roleController.addRolePermissions);
 
 // Parameterized routes (Admin only)
 router.get('/:id', roleController.getRoleById);
