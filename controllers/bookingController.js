@@ -167,7 +167,7 @@ const verifyBookingOTP = async (req, res) => {
                 email: bookingData.email,
                 phone: bookingData.phone.dialingCode + bookingData.phone.number,
                 password: generatedPassword,
-                role: 'user'
+                type: 'customer'
             });
 
             isNewUser = true;
