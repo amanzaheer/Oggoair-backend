@@ -15,10 +15,14 @@ const otpSchema = new mongoose.Schema({
     },
     purpose: {
         type: String,
-        enum: ['registration', 'booking', 'password_reset'],
+        enum: ['registration', 'login', 'booking', 'password_reset'],
         default: 'booking'
     },
     isUsed: {
+        type: Boolean,
+        default: false
+    },
+    isVerified: {
         type: Boolean,
         default: false
     },

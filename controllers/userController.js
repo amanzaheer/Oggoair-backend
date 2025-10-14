@@ -4,70 +4,40 @@ const OTP = require('../models/OTP');
 const { generateToken, generateRefreshToken, verifyToken } = require('../utils/jwtUtils');
 const { sendOTPEmail } = require('../utils/emailService');
 
-// Register a new user (sends OTP for verification)
+// Send OTP for login or registration (unified endpoint)
 const signup = async (req, res) => {
   try {
-    const { fullName, username, email, phone, password, role } = req.body;
-    const type = req.query.type || 'customer'; // Get type from query parameter, default to customer
+    const { email, firstName, lastName } = req.body;
 
-    // Validate type
-    if (!['customer', 'admin'].includes(type)) {
+    if (!email) {
       return res.status(400).json({
         status: 'error',
-        message: 'Invalid type. Must be either "customer" or "admin"'
+        message: 'Email is required'
       });
     }
 
-    // Check if username already exists
-    const existingUsername = await User.findOne({ username: username.toLowerCase() });
-    if (existingUsername) {
+    // Check if user exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const isLogin = !!existingUser;
+
+    // If new user, require firstName and lastName
+    if (!isLogin && (!firstName || !lastName)) {
       return res.status(400).json({
         status: 'error',
-        message: 'Username already exists. Please choose a different username.'
+        message: 'First name and last name are required for new users'
       });
     }
 
-    // Check if email already exists
-    const existingEmail = await User.findOne({ email: email.toLowerCase() });
-    if (existingEmail) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Email already registered. Please use a different email or login.'
-      });
-    }
-
-    // If type is admin, role is required
-    if (type === 'admin') {
-      if (!role) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Role is required for admin type'
-        });
-      }
-
-      // Validate role exists
-      const roleDoc = await Role.findById(role);
-      if (!roleDoc) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Role not found'
-        });
-      }
-    }
-
-    // Store user data temporarily in OTP record
-    const signupData = {
-      fullName,
-      username: username.toLowerCase(),
+    // Prepare data to store with OTP
+    const otpData = {
       email: email.toLowerCase(),
-      phone,
-      password,
-      type: type,
-      role: type === 'admin' ? role : null
+      isLogin,
+      firstName: firstName?.trim(),
+      lastName: lastName?.trim()
     };
 
     // Generate and store OTP
-    const otpRecord = await OTP.createOTP(email.toLowerCase(), 'registration', signupData);
+    const otpRecord = await OTP.createOTP(email.toLowerCase(), isLogin ? 'login' : 'registration', otpData);
 
     // Send OTP email
     const emailResult = await sendOTPEmail(email, otpRecord.otp);
@@ -82,19 +52,20 @@ const signup = async (req, res) => {
 
     res.status(200).json({
       status: 'success',
-      message: 'OTP sent to your email. Please verify to complete registration.',
+      message: `OTP sent to your email for ${isLogin ? 'login' : 'registration'}`,
       data: {
         email: email.toLowerCase(),
+        isLogin,
         expiresIn: '10 minutes'
       }
     });
 
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('Send OTP error:', error);
     console.error('Error stack:', error.stack);
     res.status(500).json({
       status: 'error',
-      message: 'Error processing signup request',
+      message: 'Error sending OTP',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -113,10 +84,13 @@ const verifySignupOTP = async (req, res) => {
       });
     }
 
-    console.log('Verifying OTP and creating user');
+    console.log('Verifying OTP for:', email);
 
-    // Find valid OTP
-    const otpRecord = await OTP.findValidOTP(email.toLowerCase(), 'registration');
+    // Find valid OTP for either login or registration
+    let otpRecord = await OTP.findOne({
+      email: email.toLowerCase(),
+      isVerified: false
+    }).sort({ createdAt: -1 });
 
     if (!otpRecord) {
       return res.status(400).json({
@@ -134,42 +108,47 @@ const verifySignupOTP = async (req, res) => {
       });
     }
 
-    // Get signup data from OTP record
-    const signupData = otpRecord.userData;
+    const { isLogin, firstName, lastName } = otpRecord.userData;
+    let user;
 
-    // Double-check username and email are still unique (race condition protection)
-    const existingUser = await User.findOne({
-      $or: [
-        { username: signupData.username },
-        { email: signupData.email }
-      ]
-    });
+    if (isLogin) {
+      // Existing user - login
+      user = await User.findOne({ email: email.toLowerCase() });
 
-    if (existingUser) {
-      await OTP.findByIdAndDelete(otpRecord._id);
-      return res.status(400).json({
-        status: 'error',
-        message: existingUser.username === signupData.username
-          ? 'Username already exists'
-          : 'Email already registered'
+      if (!user) {
+        await OTP.findByIdAndDelete(otpRecord._id);
+        return res.status(400).json({
+          status: 'error',
+          message: 'User not found'
+        });
+      }
+
+      console.log('User logged in:', user.email);
+    } else {
+      // New user - registration
+      const fullName = `${firstName} ${lastName}`;
+
+      user = await User.create({
+        fullName,
+        email: email.toLowerCase(),
+        type: 'customer',
+        role: null
       });
+
+      console.log('New user created:', user.email);
     }
 
-    // Create user
-    const user = await User.create({
-      fullName: signupData.fullName,
-      username: signupData.username,
-      email: signupData.email,
-      phone: signupData.phone,
-      password: signupData.password,
-      type: signupData.type,
-      role: signupData.role,
-      isEmailVerified: true // Mark email as verified since they verified OTP
-    });
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
 
-    // Generate token
+    // Generate tokens
     const token = generateToken(user._id);
-    await user.updateLastLogin();
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Save refresh token
+    user.refreshToken = refreshToken;
+    await user.save();
 
     // Populate the role to get full role object
     const userWithRole = await User.findById(user._id)
@@ -179,12 +158,13 @@ const verifySignupOTP = async (req, res) => {
     // Delete the used OTP record
     await OTP.findByIdAndDelete(otpRecord._id);
 
-    res.status(201).json({
+    res.status(isLogin ? 200 : 201).json({
       status: 'success',
-      message: 'Registration successful! Welcome to Oggoair.',
+      message: isLogin ? 'Login successful!' : 'Registration successful! You are now logged in.',
       data: {
         user: userWithRole.profile,
-        token
+        token,
+        refreshToken
       }
     });
 

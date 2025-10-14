@@ -19,23 +19,6 @@ const handleValidationErrors = (req, res, next) => {
 
 // Signup validation rules
 const signupValidation = [
-  body('fullName')
-    .trim()
-    .notEmpty()
-    .withMessage('Full name is required')
-    .isLength({ max: 100 })
-    .withMessage('Full name cannot exceed 100 characters'),
-
-  body('username')
-    .trim()
-    .notEmpty()
-    .withMessage('Username is required')
-    .isLength({ min: 3, max: 30 })
-    .withMessage('Username must be between 3 and 30 characters')
-    .matches(/^[a-zA-Z0-9_]+$/)
-    .withMessage('Username can only contain letters, numbers, and underscores')
-    .toLowerCase(),
-
   body('email')
     .trim()
     .notEmpty()
@@ -45,23 +28,21 @@ const signupValidation = [
     .normalizeEmail()
     .toLowerCase(),
 
-  body('phone')
+  body('firstName')
+    .optional()
     .trim()
     .notEmpty()
-    .withMessage('Phone number is required')
-    .matches(/^[\+]?[1-9][\d]{0,15}$/)
-    .withMessage('Please enter a valid phone number'),
+    .withMessage('First name cannot be empty if provided')
+    .isLength({ max: 50 })
+    .withMessage('First name cannot exceed 50 characters'),
 
-  body('password')
-    .notEmpty()
-    .withMessage('Password is required')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters'),
-
-  body('role')
+  body('lastName')
     .optional()
-    .isMongoId()
-    .withMessage('Role must be a valid MongoDB ID'),
+    .trim()
+    .notEmpty()
+    .withMessage('Last name cannot be empty if provided')
+    .isLength({ max: 50 })
+    .withMessage('Last name cannot exceed 50 characters'),
 
   handleValidationErrors
 ];

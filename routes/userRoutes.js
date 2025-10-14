@@ -22,7 +22,7 @@ router.post('/auth/check-email', userController.checkEmail);
 router.post('/signup/verify-otp', userController.verifySignupOTP);
 
 // Signup - sends OTP to email
-router.post('/signup', signupValidation, userController.signup);
+router.post('/register', signupValidation, userController.signup);
 
 // Login and token management
 router.post('/login', loginValidation, userController.login);
