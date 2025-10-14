@@ -569,10 +569,38 @@ const logout = async (req, res) => {
   }
 };
 
+// Check if email exists
+const checkEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email is required'
+      });
+    }
+
+    // Check if email exists in database
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    res.status(200).json({
+      accountExists: !!user
+    });
+  } catch (error) {
+    console.error('Check email error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error checking email'
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifySignupOTP,
   login,
+  checkEmail,
   getMe,
   getAllUsers,
   getUserById,

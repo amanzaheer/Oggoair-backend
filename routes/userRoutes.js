@@ -15,6 +15,9 @@ const {
 } = require('../middleware/validation');
 
 // Public routes
+// Check if email exists
+router.post('/auth/check-email', userController.checkEmail);
+
 // Verify OTP and complete signup (MUST BE BEFORE /signup route)
 router.post('/signup/verify-otp', userController.verifySignupOTP);
 
