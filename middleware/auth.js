@@ -64,10 +64,10 @@ const protect = async (req, res, next) => {
   }
 };
 
-// Restrict to certain roles
-const restrictTo = (...roles) => {
+// Restrict to certain types (customer or admin)
+const restrictTo = (...types) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    if (!types.includes(req.user.type)) {
       return res.status(403).json({
         status: 'error',
         message: 'You do not have permission to perform this action.'

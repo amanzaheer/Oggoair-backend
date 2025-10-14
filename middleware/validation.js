@@ -60,13 +60,8 @@ const signupValidation = [
 
   body('role')
     .optional()
-    .isIn(['user', 'admin'])
-    .withMessage('Role must be either user or admin'),
-
-  body('assignedRole')
-    .optional()
     .isMongoId()
-    .withMessage('assignedRole must be a valid role id'),
+    .withMessage('Role must be a valid MongoDB ID'),
 
   handleValidationErrors
 ];
@@ -116,13 +111,8 @@ const updateUserValidation = [
 
   body('role')
     .optional()
-    .isIn(['user', 'admin'])
-    .withMessage('Role must be either user or admin'),
-
-  body('assignedRole')
-    .optional()
     .isMongoId()
-    .withMessage('assignedRole must be a valid role id'),
+    .withMessage('Role must be a valid MongoDB ID'),
 
   body('isActive')
     .optional()

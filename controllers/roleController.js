@@ -209,7 +209,7 @@ const deleteRole = async (req, res) => {
         }
 
         // Check if any users are assigned this role
-        const usersWithRole = await User.countDocuments({ assignedRole: role._id });
+        const usersWithRole = await User.countDocuments({ role: role._id });
         if (usersWithRole > 0) {
             return res.status(400).json({
                 status: 'error',
@@ -329,7 +329,7 @@ const getRoleStats = async (req, res) => {
                 $lookup: {
                     from: 'users',
                     localField: '_id',
-                    foreignField: 'assignedRole',
+                    foreignField: 'role',
                     as: 'users'
                 }
             },
@@ -385,14 +385,13 @@ const assignUserRole = async (req, res) => {
             });
         }
 
-        // Assign role to user and update role field with role name
-        user.assignedRole = roleId;
-        user.role = role.name;
+        // Assign role to user
+        user.role = roleId;
         await user.save();
 
         // Get updated user with populated role
         const updatedUser = await User.findById(userId)
-            .populate('assignedRole', 'name permissions')
+            .populate('role', 'name permissions')
             .select('-password');
 
         res.status(200).json({

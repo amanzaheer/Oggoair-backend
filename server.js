@@ -39,8 +39,10 @@ mongoose.connect(process.env.MONGODB_URI, {
 // Ensure there is at least one admin user
 async function ensureDefaultAdmin() {
   const User = require('./models/User');
+  const Role = require('./models/Role');
 
-  const existingAdmin = await User.findOne({ role: 'admin' });
+  // Check if any admin user exists
+  const existingAdmin = await User.findOne({ type: 'admin' });
   if (existingAdmin) {
     console.log('Admin user exists:', existingAdmin.username);
     return;
@@ -58,10 +60,21 @@ async function ensureDefaultAdmin() {
     $or: [{ username: adminUsername }, { email: adminEmail }]
   });
 
+  // Find or create admin role
+  let adminRole = await Role.findOne({ name: 'admin' });
+  if (!adminRole) {
+    adminRole = await Role.create({
+      name: 'admin',
+      permissions: ['readusers', 'writeusers', 'deleteusers', 'addusers', 'updateusers', 'addbookings', 'viewbookings', 'deletebookings']
+    });
+    console.log('Admin role created');
+  }
+
   if (existingByUsernameOrEmail) {
     // If a user exists with the intended creds but not admin, elevate to admin
-    if (existingByUsernameOrEmail.role !== 'admin') {
-      existingByUsernameOrEmail.role = 'admin';
+    if (existingByUsernameOrEmail.type !== 'admin') {
+      existingByUsernameOrEmail.type = 'admin';
+      existingByUsernameOrEmail.role = adminRole._id;
       await existingByUsernameOrEmail.save();
       console.log('Promoted existing user to admin:', existingByUsernameOrEmail.username);
     } else {
@@ -76,7 +89,8 @@ async function ensureDefaultAdmin() {
     email: adminEmail,
     phone: adminPhone,
     password: adminPassword,
-    role: 'admin'
+    type: 'admin',
+    role: adminRole._id
   });
 
   console.log('Default admin created:', {

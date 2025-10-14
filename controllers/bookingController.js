@@ -196,9 +196,9 @@ const verifyBookingOTP = async (req, res) => {
         // Generate token
         const token = generateToken(user._id);
 
-        // Populate user data with full assignedRole object
+        // Populate user data with full role object
         const userWithRole = await User.findById(user._id)
-            .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+            .populate('role', 'name permissions')
             .select('-password -refreshToken');
 
         // Delete the used OTP record
@@ -419,7 +419,7 @@ const getBookingById = async (req, res) => {
         }
 
         // Check if user can access this booking
-        if (req.user.role !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
+        if (req.user.type !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 status: 'error',
                 message: 'You can only view your own bookings'
@@ -455,7 +455,7 @@ const getBookingByReference = async (req, res) => {
         }
 
         // Check if user can access this booking
-        if (req.user.role !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
+        if (req.user.type !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 status: 'error',
                 message: 'You can only view your own bookings'
@@ -492,7 +492,7 @@ const updateBookingStatus = async (req, res) => {
         }
 
         // Check if user can update this booking
-        if (req.user.role !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
+        if (req.user.type !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 status: 'error',
                 message: 'You can only update your own bookings'
@@ -500,7 +500,7 @@ const updateBookingStatus = async (req, res) => {
         }
 
         // Regular users can only cancel their own bookings
-        if (req.user.role !== 'admin' && status !== 'cancelled') {
+        if (req.user.type !== 'admin' && status !== 'cancelled') {
             return res.status(403).json({
                 status: 'error',
                 message: 'You can only cancel your bookings'
@@ -549,7 +549,7 @@ const updateBooking = async (req, res) => {
         }
 
         // Check if user can update this booking
-        if (req.user.role !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
+        if (req.user.type !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 status: 'error',
                 message: 'You can only update your own bookings'
@@ -611,7 +611,7 @@ const deleteBooking = async (req, res) => {
         }
 
         // Check if user can delete this booking
-        if (req.user.role !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
+        if (req.user.type !== 'admin' && booking.user._id.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 status: 'error',
                 message: 'You can only delete your own bookings'

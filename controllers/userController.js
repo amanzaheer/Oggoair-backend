@@ -7,7 +7,16 @@ const { sendOTPEmail } = require('../utils/emailService');
 // Register a new user (sends OTP for verification)
 const signup = async (req, res) => {
   try {
-    const { fullName, username, email, phone, password, role, assignedRole } = req.body;
+    const { fullName, username, email, phone, password, role } = req.body;
+    const type = req.query.type || 'customer'; // Get type from query parameter, default to customer
+
+    // Validate type
+    if (!['customer', 'admin'].includes(type)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid type. Must be either "customer" or "admin"'
+      });
+    }
 
     // Check if username already exists
     const existingUsername = await User.findOne({ username: username.toLowerCase() });
@@ -27,28 +36,23 @@ const signup = async (req, res) => {
       });
     }
 
-    // Role priority logic: assignedRole takes priority over role key
-    let finalRole = role || 'user';
-    let finalAssignedRole = null;
+    // If type is admin, role is required
+    if (type === 'admin') {
+      if (!role) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Role is required for admin type'
+        });
+      }
 
-    // If assignedRole provided, validate it and use it (ignore role key)
-    if (assignedRole) {
-      const roleDoc = await Role.findById(assignedRole);
+      // Validate role exists
+      const roleDoc = await Role.findById(role);
       if (!roleDoc) {
         return res.status(400).json({
           status: 'error',
-          message: 'Assigned role not found'
+          message: 'Role not found'
         });
       }
-      if (!roleDoc.isActive) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Cannot assign inactive role to user'
-        });
-      }
-      // Use role from assignedRole, ignore role key
-      finalRole = roleDoc.name;
-      finalAssignedRole = assignedRole;
     }
 
     // Store user data temporarily in OTP record
@@ -58,8 +62,8 @@ const signup = async (req, res) => {
       email: email.toLowerCase(),
       phone,
       password,
-      role: finalRole,
-      assignedRole: finalAssignedRole
+      type: type,
+      role: type === 'admin' ? role : null
     };
 
     // Generate and store OTP
@@ -158,8 +162,8 @@ const verifySignupOTP = async (req, res) => {
       email: signupData.email,
       phone: signupData.phone,
       password: signupData.password,
+      type: signupData.type,
       role: signupData.role,
-      assignedRole: signupData.assignedRole,
       isEmailVerified: true // Mark email as verified since they verified OTP
     });
 
@@ -167,9 +171,9 @@ const verifySignupOTP = async (req, res) => {
     const token = generateToken(user._id);
     await user.updateLastLogin();
 
-    // Populate the assignedRole to get full role object
+    // Populate the role to get full role object
     const userWithRole = await User.findById(user._id)
-      .populate('assignedRole', 'name displayName description permissions isActive isSystemRole')
+      .populate('role', 'name permissions')
       .select('-password -refreshToken');
 
     // Delete the used OTP record

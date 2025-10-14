@@ -38,14 +38,18 @@ const userSchema = new mongoose.Schema({
     minlength: [6, 'Password must be at least 6 characters'],
     select: false // Don't include password in queries by default
   },
-  role: {
+  type: {
     type: String,
-    default: 'user'
+    enum: ['customer', 'admin'],
+    default: 'customer'
   },
-  assignedRole: {
+  role: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Role',
-    default: null
+    default: null,
+    required: function () {
+      return this.type === 'admin';
+    }
   },
   isActive: {
     type: Boolean,
@@ -74,17 +78,13 @@ userSchema.virtual('profile').get(function () {
     username: this.username,
     email: this.email,
     phone: this.phone,
-    role: this.role,
+    type: this.type,
     // Return full role object if populated, otherwise return just the ID
-    assignedRole: this.assignedRole && this.assignedRole._id ? {
-      id: this.assignedRole._id,
-      name: this.assignedRole.name,
-      displayName: this.assignedRole.displayName,
-      description: this.assignedRole.description,
-      permissions: this.assignedRole.permissions,
-      isActive: this.assignedRole.isActive,
-      isSystemRole: this.assignedRole.isSystemRole
-    } : this.assignedRole,
+    role: this.role && this.role._id ? {
+      id: this.role._id,
+      name: this.role.name,
+      permissions: this.role.permissions
+    } : this.role,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
     createdAt: this.createdAt,
@@ -142,7 +142,7 @@ userSchema.statics.findByUsernameOrEmail = function (identifier) {
 // Index for better query performance
 userSchema.index({ username: 1 });
 userSchema.index({ email: 1 });
+userSchema.index({ type: 1 });
 userSchema.index({ role: 1 });
-userSchema.index({ assignedRole: 1 });
 
 module.exports = mongoose.model('User', userSchema);
