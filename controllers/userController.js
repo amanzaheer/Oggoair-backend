@@ -285,8 +285,14 @@ const getAllUsers = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const filter = {};
-    if (req.query.role) filter.role = req.query.role;
+
+    // Filter by type (admin or customer)
+    if (req.query.type && ['admin', 'customer'].includes(req.query.type)) {
+      filter.type = req.query.type;
+    }
+
     if (req.query.isActive !== undefined) filter.isActive = req.query.isActive === 'true';
+
     if (req.query.search) {
       filter.$or = [
         { fullName: { $regex: req.query.search, $options: 'i' } },
