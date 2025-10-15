@@ -29,6 +29,10 @@ mongoose.connect(process.env.MONGODB_URI, {
   .then(async () => {
     console.log('MongoDB connected successfully');
     try {
+      // Ensure indexes are in sync (drops outdated ones and creates new ones)
+      const User = require('./models/User');
+      await User.syncIndexes();
+      console.log('User indexes synced');
       await ensureDefaultAdmin();
     } catch (err) {
       console.error('Error ensuring default admin:', err);

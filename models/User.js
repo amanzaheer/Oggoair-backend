@@ -13,8 +13,6 @@ const userSchema = new mongoose.Schema({
     required: function () {
       return this.type === 'admin';
     },
-    unique: true,
-    sparse: true, // Allow null/undefined for unique constraint
     trim: true,
     lowercase: true,
     minlength: [3, 'Username must be at least 3 characters'],
@@ -146,9 +144,12 @@ userSchema.statics.findByUsernameOrEmail = function (identifier) {
   }).select('+password');
 };
 
-// Index for better query performance
-userSchema.index({ username: 1 });
-userSchema.index({ email: 1 });
+// Indexes
+// Ensure username is unique only for admin users, allowing customers without username
+userSchema.index(
+  { username: 1 },
+  { unique: true, partialFilterExpression: { type: 'admin' } }
+);
 userSchema.index({ type: 1 });
 userSchema.index({ role: 1 });
 
