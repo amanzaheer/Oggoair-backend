@@ -2,8 +2,6 @@ const express = require('express');
 const { body } = require('express-validator');
 const {
     createBooking,
-    requestBookingWithOTP,
-    verifyBookingOTP,
     getMyBookings,
     getAllBookings,
     getBookingById,
@@ -117,10 +115,6 @@ const validateUpdateStatus = [
         .isIn(['pending', 'confirmed', 'cancelled'])
         .withMessage('Status must be pending, confirmed, or cancelled')
 ];
-
-// Public routes for OTP booking (no authentication required) - MUST BE FIRST!
-router.post('/request-otp', requestBookingWithOTP);
-router.post('/verify-otp', verifyBookingOTP);
 
 // All routes below require authentication
 router.use(protect);
