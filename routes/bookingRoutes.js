@@ -117,6 +117,9 @@ const validateUpdateStatus = [
         .withMessage('Status must be pending, confirmed, or cancelled')
 ];
 
+// Public sync endpoint (NO AUTH REQUIRED) - MUST BE BEFORE protect middleware
+router.post('/sync/duffel/public', syncDuffelOrders);
+
 // All routes below require authentication
 router.use(protect);
 

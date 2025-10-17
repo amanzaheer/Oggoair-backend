@@ -99,7 +99,7 @@ const passengerBookingSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: [true, 'User is required']
+        required: false
     },
     // Main contact information (from the top of the form)
     email: {

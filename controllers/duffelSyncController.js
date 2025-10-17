@@ -84,9 +84,10 @@ async function syncDuffelOrders(req, res) {
                     .filter(Boolean) : [];
 
                 if (passengers.length > 0) {
-                    // Create booking linked to the user who triggered the sync (admin)
+                    // Create booking linked to the user who triggered the sync (admin or system)
+                    const userId = req.user ? req.user._id : null;
                     await PassengerBooking.create({
-                        user: req.user._id,
+                        user: userId,
                         bookingReference: bookingReference || undefined,
                         email: contactEmail,
                         phone: { dialingCode, number },
