@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-require('dotenv').config({ path: './config.env' });
+require('dotenv').config();
 
 // Import routes
 const userRoutes = require('./routes/userRoutes');
