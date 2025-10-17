@@ -120,6 +120,16 @@ const validateUpdateStatus = [
 // Public sync endpoint (NO AUTH REQUIRED) - MUST BE BEFORE protect middleware
 router.post('/sync/duffel/public', syncDuffelOrders);
 
+// Debug endpoint to check environment variables
+router.get('/debug/env', (req, res) => {
+    res.json({
+        DUFFEL_API_KEY: process.env.DUFFEL_API_KEY ? 'SET' : 'NOT SET',
+        DUFFEL_BASE_URL: process.env.DUFFEL_BASE_URL || 'NOT SET',
+        DUFFEL_VERSION: process.env.DUFFEL_VERSION || 'NOT SET',
+        NODE_ENV: process.env.NODE_ENV || 'NOT SET'
+    });
+});
+
 // All routes below require authentication
 router.use(protect);
 
