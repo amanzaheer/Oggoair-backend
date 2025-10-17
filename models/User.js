@@ -2,9 +2,25 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
+  firstName: {
+    type: String,
+    required: function () {
+      return !this.fullName; // Only required if fullName doesn't exist (for new users)
+    },
+    trim: true,
+    maxlength: [50, 'First name cannot exceed 50 characters']
+  },
+  lastName: {
+    type: String,
+    required: function () {
+      return !this.fullName; // Only required if fullName doesn't exist (for new users)
+    },
+    trim: true,
+    maxlength: [50, 'Last name cannot exceed 50 characters']
+  },
+  // Keep fullName for backward compatibility with existing data
   fullName: {
     type: String,
-    required: [true, 'Full name is required'],
     trim: true,
     maxlength: [100, 'Full name cannot exceed 100 characters']
   },
@@ -77,9 +93,28 @@ const userSchema = new mongoose.Schema({
 
 // Virtual for user's full profile (excluding password)
 userSchema.virtual('profile').get(function () {
+  // Handle both old (fullName) and new (firstName/lastName) data formats
+  let firstName, lastName;
+
+  if (this.firstName && this.lastName) {
+    // New format: firstName and lastName exist
+    firstName = this.firstName;
+    lastName = this.lastName;
+  } else if (this.fullName) {
+    // Old format: split fullName into firstName and lastName
+    const nameParts = this.fullName.trim().split(' ');
+    firstName = nameParts[0] || '';
+    lastName = nameParts.slice(1).join(' ') || '';
+  } else {
+    // Fallback: empty strings
+    firstName = '';
+    lastName = '';
+  }
+
   return {
     id: this._id,
-    fullName: this.fullName,
+    firstName,
+    lastName,
     username: this.username,
     email: this.email,
     phone: this.phone,
@@ -95,6 +130,17 @@ userSchema.virtual('profile').get(function () {
     createdAt: this.createdAt,
     updatedAt: this.updatedAt
   };
+});
+
+// Migrate fullName to firstName and lastName before saving
+userSchema.pre('save', async function (next) {
+  // If fullName exists but firstName/lastName don't, split fullName
+  if (this.fullName && (!this.firstName || !this.lastName)) {
+    const nameParts = this.fullName.trim().split(' ');
+    this.firstName = nameParts[0] || '';
+    this.lastName = nameParts.slice(1).join(' ') || '';
+  }
+  next();
 });
 
 // Hash password before saving

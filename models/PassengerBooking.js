@@ -107,7 +107,13 @@ const passengerBookingSchema = new mongoose.Schema({
         required: [true, 'Email is required'],
         lowercase: true,
         trim: true,
-        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+        validate: {
+            validator: function (val) {
+                if (val === 'N/A' || val === 'n/a') return true;
+                return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(val);
+            },
+            message: 'Please enter a valid email'
+        }
     },
     phone: {
         dialingCode: {

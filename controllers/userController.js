@@ -126,10 +126,9 @@ const verifySignupOTP = async (req, res) => {
       console.log('User logged in:', user.email);
     } else {
       // New user - registration
-      const fullName = `${firstName} ${lastName}`;
-
       user = await User.create({
-        fullName,
+        firstName,
+        lastName,
         email: email.toLowerCase(),
         type: 'customer',
         role: null
@@ -275,7 +274,9 @@ const getAllUsers = async (req, res) => {
 
     if (req.query.search) {
       filter.$or = [
-        { fullName: { $regex: req.query.search, $options: 'i' } },
+        { firstName: { $regex: req.query.search, $options: 'i' } },
+        { lastName: { $regex: req.query.search, $options: 'i' } },
+        { fullName: { $regex: req.query.search, $options: 'i' } }, // For backward compatibility
         { username: { $regex: req.query.search, $options: 'i' } },
         { email: { $regex: req.query.search, $options: 'i' } }
       ];
@@ -341,7 +342,7 @@ const getUserById = async (req, res) => {
 // Update user
 const updateUser = async (req, res) => {
   try {
-    const { fullName, email, phone, isActive } = req.body;
+    const { firstName, lastName, email, phone, isActive } = req.body;
     const userId = req.params.id;
 
     const user = await User.findById(userId);
@@ -369,7 +370,7 @@ const updateUser = async (req, res) => {
       }
     }
 
-    const updateData = { fullName, email, phone };
+    const updateData = { firstName, lastName, email, phone };
     // Only admin can update isActive
     if (req.user.type === 'admin') {
       if (isActive !== undefined) updateData.isActive = isActive;

@@ -1,6 +1,7 @@
 const axios = require('axios');
 
 const DUFFEL_BASE_URL = process.env.DUFFEL_BASE_URL || 'https://api.duffel.com';
+const DUFFEL_VERSION = process.env.DUFFEL_VERSION || 'v1';
 
 function getClient() {
     const apiKey = process.env.DUFFEL_API_KEY;
@@ -13,7 +14,7 @@ function getClient() {
             'Authorization': `Bearer ${apiKey}`,
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Duffel-Version': 'v1'
+            'Duffel-Version': DUFFEL_VERSION
         },
         timeout: 15000
     });

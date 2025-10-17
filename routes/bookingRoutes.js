@@ -12,6 +12,7 @@ const {
     getBookingStats
 } = require('../controllers/bookingController');
 const { protect, restrictTo } = require('../middleware/auth');
+const { syncDuffelOrders } = require('../controllers/duffelSyncController');
 
 const router = express.Router();
 
@@ -122,6 +123,7 @@ router.use(protect);
 // Admin only routes (MUST BE BEFORE other routes to avoid conflicts)
 router.get('/stats/overview', restrictTo('admin'), getBookingStats);
 router.get('/', restrictTo('admin'), getAllBookings);
+router.post('/sync/duffel', restrictTo('admin'), syncDuffelOrders);
 
 // Get current user's bookings
 router.get('/my-bookings', getMyBookings);
