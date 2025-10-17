@@ -1,4 +1,5 @@
 const axios = require('axios');
+require('dotenv').config();
 
 const DUFFEL_BASE_URL = process.env.DUFFEL_BASE_URL || 'https://api.duffel.com';
 const DUFFEL_VERSION = process.env.DUFFEL_VERSION || 'v1';
