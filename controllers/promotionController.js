@@ -103,7 +103,7 @@ const createPromotion = async (req, res) => {
 // Get all promotions
 const getAllPromotions = async (req, res) => {
     try {
-        const { page = 1, limit = 10, isActive } = req.query;
+        const { isActive } = req.query;
         const query = {};
 
         if (isActive !== undefined) {
@@ -111,24 +111,12 @@ const getAllPromotions = async (req, res) => {
         }
 
         const promotions = await Promotion.find(query)
-            .sort({ createdAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit);
-
-        const total = await Promotion.countDocuments(query);
+            .sort({ createdAt: -1 });
 
         res.status(200).json({
             status: 'success',
             message: 'Promotions retrieved successfully',
-            data: {
-                promotions,
-                pagination: {
-                    currentPage: parseInt(page),
-                    totalPages: Math.ceil(total / limit),
-                    totalItems: total,
-                    itemsPerPage: parseInt(limit)
-                }
-            }
+            data: promotions
         });
     } catch (error) {
         res.status(500).json({

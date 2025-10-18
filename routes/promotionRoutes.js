@@ -12,7 +12,7 @@ const {
 // Create a new promotion
 router.post('/', createPromotion);
 
-// Get all promotions with pagination and filtering
+// Get all promotions with filtering
 router.get('/', getAllPromotions);
 
 // Get promotion by ID
