@@ -10,6 +10,7 @@ const userRoutes = require('./routes/userRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
+const promotionRoutes = require('./routes/promotionRoutes');
 
 const app = express();
 
@@ -20,6 +21,9 @@ app.use(morgan('combined'));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files (uploaded images)
+app.use('/uploads', express.static('uploads'));
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -110,6 +114,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/promotions', promotionRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {

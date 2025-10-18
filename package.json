@@ -29,6 +29,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.5.0",
     "morgan": "^1.10.0",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.9",
     "passport": "^0.7.0",
     "passport-apple": "^2.0.2",
