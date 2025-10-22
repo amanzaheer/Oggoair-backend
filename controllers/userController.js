@@ -181,14 +181,22 @@ const verifySignupOTP = async (req, res) => {
 // Login user
 const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
-    const user = await User.findByUsernameOrEmail(username);
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
     if (!user || !user.isActive) {
       return res.status(401).json({
         status: 'error',
         message: 'Invalid credentials or account deactivated'
+      });
+    }
+
+    // Check if user has a password set
+    if (!user.password) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'This account does not have a password set. Please use OTP login instead.'
       });
     }
 
@@ -454,6 +462,37 @@ const changePassword = async (req, res) => {
   }
 };
 
+// Set password (for users without existing password)
+const setPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    const user = await User.findById(req.user._id).select('+password');
+
+    // Check if user already has a password
+    if (user.password) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Password already set. Use change password endpoint to update it.'
+      });
+    }
+
+    user.password = password;
+    await user.save();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Password set successfully. You can now login with email and password.'
+    });
+  } catch (error) {
+    console.error('Set password error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error setting password'
+    });
+  }
+};
+
 // Refresh token
 const refreshToken = async (req, res) => {
   try {
@@ -588,6 +627,7 @@ module.exports = {
   updateUser,
   deleteUser,
   changePassword,
+  setPassword,
   refreshToken,
   logout
 };

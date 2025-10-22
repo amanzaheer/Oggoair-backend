@@ -11,6 +11,7 @@ const {
   loginValidation,
   updateUserValidation,
   changePasswordValidation,
+  setPasswordValidation,
   refreshTokenValidation
 } = require('../middleware/validation');
 
@@ -34,6 +35,7 @@ router.use(protect); // All routes below this require authentication
 // User profile routes
 router.get('/me', userController.getMe);
 router.put('/change-password', changePasswordValidation, userController.changePassword);
+router.put('/set-password', setPasswordValidation, userController.setPassword);
 router.post('/logout', userController.logout);
 
 // User management routes (Admin only)

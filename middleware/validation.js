@@ -49,10 +49,13 @@ const signupValidation = [
 
 // Login validation rules
 const loginValidation = [
-  body('username')
+  body('email')
     .trim()
     .notEmpty()
-    .withMessage('Username is required')
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Please enter a valid email')
+    .normalizeEmail()
     .toLowerCase(),
 
   body('password')
@@ -110,6 +113,17 @@ const changePasswordValidation = [
     .withMessage('New password is required')
     .isLength({ min: 6 })
     .withMessage('New password must be at least 6 characters'),
+
+  handleValidationErrors
+];
+
+// Set password validation (for users without existing password)
+const setPasswordValidation = [
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters'),
 
   handleValidationErrors
 ];
@@ -260,6 +274,7 @@ module.exports = {
   loginValidation,
   updateUserValidation,
   changePasswordValidation,
+  setPasswordValidation,
   refreshTokenValidation,
   validatePermission,
   validatePermissionUpdate,
