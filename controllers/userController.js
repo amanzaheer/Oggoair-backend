@@ -267,10 +267,6 @@ const getMe = async (req, res) => {
 // Get all users
 const getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
     const filter = {};
 
     // Filter by type (admin or customer)
@@ -294,21 +290,11 @@ const getAllUsers = async (req, res) => {
       .populate('role', 'name permissions')
       .select('-password')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await User.countDocuments(filter);
 
     res.status(200).json({
       status: 'success',
       data: {
         users: users.map(user => user.profile),
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        }
       }
     });
   } catch (error) {
