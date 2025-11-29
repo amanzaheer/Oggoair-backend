@@ -11,6 +11,7 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
 const promotionRoutes = require('./routes/promotionRoutes');
+const transactionRoutes = require('./routes/transactionRoutes');
 
 const app = express();
 
@@ -115,6 +116,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/promotions', promotionRoutes);
+app.use('/api/transactions', transactionRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
