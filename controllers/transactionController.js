@@ -65,47 +65,8 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Check if REVOLUT_SECRET_KEY is configured
-    const isRevolutKeyMissing = !process.env.REVOLUT_SECRET_KEY || 
-                                 process.env.REVOLUT_SECRET_KEY === 'your_revolut_secret_key_here';
-    const useTestMode = process.env.REVOLUT_TEST_MODE === 'true' || 
-                        process.env.REVOLUT_TEST_MODE === '1' ||
-                        isRevolutKeyMissing;
-
-    // Test/Mock Mode - Skip Revolut API call when test mode is enabled
-    if (useTestMode) {
-      console.log('⚠️  ===== TEST MODE ACTIVE =====');
-      console.log('⚠️  Running in TEST MODE - Revolut API call skipped');
-      console.log('REVOLUT_TEST_MODE env:', process.env.REVOLUT_TEST_MODE);
-      console.log('isRevolutKeyMissing:', isRevolutKeyMissing);
-      console.log('useTestMode:', useTestMode);
-      
-      // Generate mock Revolut response
-      const mockCheckoutUrl = `https://merchant.revolut.com/checkout/order/test_${Date.now()}`;
-      const mockRevolutOrderId = `ord_test_${Date.now()}`;
-
-      // Create transaction with mock data
-      const transaction = await Transaction.create({
-        customerName: customerName.trim(),
-        email: email.toLowerCase().trim(),
-        phone: phone.trim(),
-        description: description?.trim(),
-        bookingRef: bookingRef.trim(),
-        amount,
-        currency: currency.toUpperCase().trim(),
-        checkoutUrl: mockCheckoutUrl,
-        revolutOrderId: mockRevolutOrderId
-      });
-
-      return res.status(201).json({
-        message: 'Transaction created successfully (TEST MODE - Mock Revolut Response)',
-        transaction,
-        testMode: true,
-        warning: 'This is a test transaction. Revolut API was not called.'
-      });
-    }
-
-    if (isRevolutKeyMissing) {
+    // Check if REVOLUT_SECRET_KEY is configured (required for both live and sandbox)
+    if (!process.env.REVOLUT_SECRET_KEY || process.env.REVOLUT_SECRET_KEY === 'sk_iF1KSZ8jy4gXup2kFRWr8rWxhzzF7KaYaeMo5xKD37KOMFPsj77KqK0mG8iT0Gwr') {
       console.error('REVOLUT_SECRET_KEY is not configured in environment variables');
       return res.status(500).json({
         status: 'error',
@@ -114,14 +75,27 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Call Revolut Orders API
+    // Decide which Revolut environment to use based on REVOLUT_TEST_MODE
+    const isTestMode =
+      process.env.REVOLUT_TEST_MODE === 'true' ||
+      process.env.REVOLUT_TEST_MODE === '1';
+
+    // Allow overriding base URLs via env, but provide sensible defaults
+    const revolutBaseUrl = isTestMode
+      ? (process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api')
+      : (process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api');
+
+    // Call Revolut Payments API (live or sandbox depending on isTestMode)
     let revolutResponse;
     try {
       revolutResponse = await axios.post(
-        'https://merchant.revolut.com/api/orders',
+        // Endpoint example:
+        //   https://merchant.revolut.com/api/payments
+        // Revolut will return a payment document containing an `_id` field.
+        `${revolutBaseUrl}/payments`,
         {
           amount: amount,
-          currency: currency.toUpperCase().trim()
+          currency: currency.toUpperCase().trim(),
         },
         {
           headers: {
@@ -169,18 +143,24 @@ const createTransaction = async (req, res) => {
       }
     }
 
-    // Extract checkout_url and id from Revolut response
-    const checkoutUrl = revolutResponse.data?.checkout_url;
-    const revolutOrderId = revolutResponse.data?.id;
+    // Revolut now returns a payment document with an `_id` field.
+    // Example true URL (provided by user):
+    //   https://merchant.revolut.com/api/payments/692fe27c96fa756b3021dfca
+    const revolutPaymentId = revolutResponse.data?._id || revolutResponse.data?.id;
 
-    if (!checkoutUrl || !revolutOrderId) {
-      console.error('Invalid Revolut response:', revolutResponse.data);
+    if (!revolutPaymentId) {
+      console.error('Invalid Revolut response, missing _id:', revolutResponse.data);
       return res.status(500).json({
         status: 'error',
         message: 'Invalid response from payment service',
-        error: 'Missing checkout_url or id in response'
+        error: 'Missing payment _id in response'
       });
     }
+
+    // Build the checkout URL exactly as required:
+    //   {revolutBaseUrl}/payments/{_id}
+    const checkoutUrl = `${revolutBaseUrl}/payments/${revolutPaymentId}`;
+    const revolutOrderId = revolutPaymentId;
 
     // Create transaction with Revolut data
     const transaction = await Transaction.create({
