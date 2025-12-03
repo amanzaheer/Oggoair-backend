@@ -65,16 +65,6 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Check if REVOLUT_SECRET_KEY is configured (required for both live and sandbox)
-    if (!process.env.REVOLUT_SECRET_KEY || process.env.REVOLUT_SECRET_KEY === 'sk_iF1KSZ8jy4gXup2kFRWr8rWxhzzF7KaYaeMo5xKD37KOMFPsj77KqK0mG8iT0Gwr') {
-      console.error('REVOLUT_SECRET_KEY is not configured in environment variables');
-      return res.status(500).json({
-        status: 'error',
-        message: 'Payment service configuration error',
-        details: 'REVOLUT_SECRET_KEY is missing or not set. Please add your Revolut API key to config.env file, or set REVOLUT_TEST_MODE=true for development testing.'
-      });
-    }
-
     // Decide which Revolut environment to use based on REVOLUT_TEST_MODE
     const isTestMode =
       process.env.REVOLUT_TEST_MODE === 'true' ||
@@ -82,8 +72,48 @@ const createTransaction = async (req, res) => {
 
     // Allow overriding base URLs via env, but provide sensible defaults
     const revolutBaseUrl = isTestMode
-      ? (process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api')
+      ? (process.env.REVOLUT_BASE_URL_TEST || 'https://merchant.revolut.com/api')
       : (process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api');
+
+    const revolutKey = process.env.REVOLUT_SECRET_KEY;
+
+    // If key is missing or placeholder
+    const isKeyMissingOrPlaceholder =
+      !revolutKey ||
+      revolutKey === 'sk_iF1KSZ8jy4gXup2kFRWr8rWxhzzF7KaYaeMo5xKD37KOMFPsj77KqK0mG8iT0Gwr';
+
+    if (isKeyMissingOrPlaceholder) {
+      if (isTestMode) {
+        // In test mode we allow missing key and generate a mock payment/checkout URL
+        const mockId = `test_${Date.now().toString(16)}`;
+        const checkoutUrl = `${revolutBaseUrl}/payments/${mockId}`;
+
+        const transaction = await Transaction.create({
+          customerName: customerName.trim(),
+          email: email.toLowerCase().trim(),
+          phone: phone.trim(),
+          description: description?.trim(),
+          bookingRef: bookingRef.trim(),
+          amount,
+          currency: currency.toUpperCase().trim(),
+          checkoutUrl,
+          revolutOrderId: mockId
+        });
+
+        return res.status(201).json({
+          message: 'Transaction created successfully (mock Revolut payment in test mode)',
+          transaction
+        });
+      }
+
+      // In live mode we require a valid key
+      console.error('REVOLUT_SECRET_KEY is not configured in environment variables');
+      return res.status(500).json({
+        status: 'error',
+        message: 'Payment service configuration error',
+        details: 'REVOLUT_SECRET_KEY is missing or not set. Please add your Revolut API key to config.env file, or set REVOLUT_TEST_MODE=true for development testing.'
+      });
+    }
 
     // Call Revolut Payments API (live or sandbox depending on isTestMode)
     let revolutResponse;
