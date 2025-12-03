@@ -27,12 +27,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(async () => {
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000, // 30 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+      connectTimeoutMS: 30000, // 30 seconds
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
+    });
     console.log('MongoDB connected successfully');
+    
     try {
       // Ensure indexes are in sync (drops outdated ones and creates new ones)
       const User = require('./models/User');
@@ -42,8 +48,28 @@ mongoose.connect(process.env.MONGODB_URI, {
     } catch (err) {
       console.error('Error ensuring default admin:', err);
     }
-  })
-  .catch((err) => console.error('MongoDB connection error:', err));
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    console.error('Please check your MongoDB connection string and network connectivity');
+    process.exit(1);
+  }
+};
+
+// MongoDB connection event handlers
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongoose disconnected from MongoDB');
+});
+
+// Connect to database
+connectDB();
 
 // Ensure there is at least one admin user
 async function ensureDefaultAdmin() {
