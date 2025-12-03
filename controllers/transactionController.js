@@ -121,9 +121,12 @@ const createTransaction = async (req, res) => {
           created_at: new Date().toISOString()
         };
 
+        // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
+        const { checkoutUrl: _, revolutOrderId: __, ...transactionWithoutDuplicates } = transaction.toObject();
+
         return res.status(201).json({
           message: 'Transaction created successfully (mock Revolut payment in test mode)',
-          transaction,
+          transaction: transactionWithoutDuplicates,
           checkout_url: checkoutUrl,
           revolut: mockRevolutResponse
         });
@@ -242,10 +245,13 @@ const createTransaction = async (req, res) => {
 
     const transaction = await Transaction.create(transactionData);
 
+    // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
+    const { checkoutUrl: _, revolutOrderId: __, ...transactionWithoutDuplicates } = transaction.toObject();
+
     // Ensure revolut object is always included in response
     res.status(201).json({
       message: 'Transaction created successfully',
-      transaction,
+      transaction: transactionWithoutDuplicates,
       checkout_url: checkoutUrl,
       revolut: fullRevolutResponse
     });
