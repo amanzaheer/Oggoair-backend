@@ -30,11 +30,6 @@ const getAllTransactions = async (req, res) => {
   try {
     const filter = {};
 
-    // Filter by booking reference
-    if (req.query.bookingRef) {
-      filter.bookingRef = req.query.bookingRef;
-    }
-
     // Filter by email
     if (req.query.email) {
       filter.email = req.query.email.toLowerCase();
@@ -44,8 +39,7 @@ const getAllTransactions = async (req, res) => {
     if (req.query.search) {
       filter.$or = [
         { customerName: { $regex: req.query.search, $options: 'i' } },
-        { email: { $regex: req.query.search, $options: 'i' } },
-        { bookingRef: { $regex: req.query.search, $options: 'i' } }
+        { email: { $regex: req.query.search, $options: 'i' } }
       ];
     }
 
@@ -71,13 +65,13 @@ const getAllTransactions = async (req, res) => {
 // Create a transaction
 const createTransaction = async (req, res) => {
   try {
-    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
+    const { customerName, email, phone, description, amount, currency, product } = req.body;
 
     // Validate required fields
-    if (!customerName || !email || !phone || !bookingRef || amount === undefined || !currency) {
+    if (!customerName || !email || !phone || amount === undefined || !currency) {
       return res.status(400).json({
         status: 'error',
-        message: 'Missing required fields: customerName, email, phone, bookingRef, amount, and currency are required'
+        message: 'Missing required fields: customerName, email, phone, amount, and currency are required'
       });
     }
 
@@ -125,7 +119,6 @@ const createTransaction = async (req, res) => {
           email: email.toLowerCase().trim(),
           phone: phone.trim(),
           description: description?.trim(),
-          bookingRef: bookingRef.trim(),
           amount,
           currency: currency.toUpperCase().trim(),
           checkoutUrl,
@@ -276,7 +269,6 @@ const createTransaction = async (req, res) => {
       email: email.toLowerCase().trim(),
       phone: phone.trim(),
       description: description?.trim(),
-      bookingRef: bookingRef.trim(),
       amount,
       currency: currency.toUpperCase().trim(),
       checkoutUrl,
@@ -316,7 +308,7 @@ const createTransaction = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({
         status: 'error',
-        message: 'Transaction with this booking reference already exists'
+        message: 'Transaction already exists'
       });
     }
 
@@ -332,7 +324,7 @@ const createTransaction = async (req, res) => {
 const updateTransaction = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
+    const { customerName, email, phone, description, amount, currency, product } = req.body;
 
     const transaction = await Transaction.findById(id);
 
@@ -349,7 +341,6 @@ const updateTransaction = async (req, res) => {
     if (email !== undefined) updateData.email = email.toLowerCase().trim();
     if (phone !== undefined) updateData.phone = phone.trim();
     if (description !== undefined) updateData.description = description?.trim();
-    if (bookingRef !== undefined) updateData.bookingRef = bookingRef.trim();
     if (amount !== undefined) {
       if (typeof amount !== 'number' || amount < 0) {
         return res.status(400).json({

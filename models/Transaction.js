@@ -24,11 +24,6 @@ const transactionSchema = new mongoose.Schema({
     trim: true,
     maxlength: [500, 'Description cannot exceed 500 characters']
   },
-  bookingRef: {
-    type: String,
-    required: [true, 'Booking reference is required'],
-    trim: true
-  },
   amount: {
     type: Number,
     required: [true, 'Amount is required'],
@@ -61,7 +56,6 @@ const transactionSchema = new mongoose.Schema({
 });
 
 // Create indexes for better performance
-transactionSchema.index({ bookingRef: 1 });
 transactionSchema.index({ email: 1 });
 transactionSchema.index({ createdAt: -1 });
 
