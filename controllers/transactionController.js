@@ -89,8 +89,12 @@ const createTransaction = async (req, res) => {
     if (isKeyMissingOrPlaceholder) {
       if (isTestMode) {
         // In test mode we allow missing key and generate a mock payment/checkout URL
+        // Note: This is a placeholder URL for testing. It will not work as a real checkout page.
+        // In production, use a real Revolut API key to get actual checkout URLs.
         const mockId = `test_${Date.now().toString(16)}`;
-        const checkoutUrl = `${revolutBaseUrl}/payments/${mockId}`;
+        const mockToken = `mock_${Date.now().toString(16)}`;
+        // Use Revolut's actual checkout URL format for consistency (but it won't work with mock IDs)
+        const checkoutUrl = `https://checkout.revolut.com/payment-link/${mockToken}`;
 
         const transactionData = {
           customerName: customerName.trim(),
@@ -103,7 +107,7 @@ const createTransaction = async (req, res) => {
           checkoutUrl,
           revolutOrderId: mockId
         };
-        
+
         // Include product if provided in request (even if empty string)
         if (product !== undefined) {
           transactionData.product = typeof product === 'string' ? product.trim() : product;
@@ -111,14 +115,19 @@ const createTransaction = async (req, res) => {
 
         const transaction = await Transaction.create(transactionData);
 
-        // Create mock Revolut response object
+        // Create mock Revolut response object matching real API structure
         const mockRevolutResponse = {
-          _id: mockId,
           id: mockId,
+          token: mockToken,
+          type: 'payment',
+          state: 'PENDING',
           amount: amount,
           currency: currency.toUpperCase().trim(),
-          state: 'PENDING',
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          checkout_url: checkoutUrl,
+          // Note: This is a mock URL for testing. Real checkout URLs come from Revolut API.
+          _note: 'Test mode: This checkout URL is a placeholder and will not work. Use a real Revolut API key for functional checkout URLs.'
         };
 
         // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
@@ -127,7 +136,6 @@ const createTransaction = async (req, res) => {
         return res.status(201).json({
           message: 'Transaction created successfully (mock Revolut payment in test mode)',
           transaction: transactionWithoutDuplicates,
-          checkout_url: checkoutUrl,
           revolut: mockRevolutResponse
         });
       }
@@ -163,13 +171,13 @@ const createTransaction = async (req, res) => {
       );
     } catch (revolutError) {
       console.error('Revolut API error:', revolutError.response?.data || revolutError.message);
-      
+
       // Handle Revolut API errors
       if (revolutError.response) {
         // Revolut API returned an error response
         const statusCode = revolutError.response.status || 500;
         const errorData = revolutError.response.data || {};
-        
+
         // Provide more helpful error messages
         let errorMessage = 'Failed to create payment order';
         if (statusCode === 401) {
@@ -177,7 +185,7 @@ const createTransaction = async (req, res) => {
         } else if (statusCode === 400) {
           errorMessage = 'Invalid request to Revolut API. Please check amount and currency values.';
         }
-        
+
         return res.status(statusCode).json({
           status: 'error',
           message: errorMessage,
@@ -199,31 +207,39 @@ const createTransaction = async (req, res) => {
       }
     }
 
-    // Revolut now returns a payment document with an `_id` field.
-    // Example true URL (provided by user):
-    //   https://merchant.revolut.com/api/payments/692fe27c96fa756b3021dfca
-    const revolutPaymentId = revolutResponse.data?._id || revolutResponse.data?.id;
+    // Revolut API response includes: id, token, checkout_url, amount, currency, state, etc.
+    // The checkout_url is provided by Revolut in format: https://checkout.revolut.com/payment-link/{token}
+    const revolutData = revolutResponse.data || {};
+    const revolutPaymentId = revolutData.id || revolutData._id;
+    const checkoutUrl = revolutData.checkout_url;
 
     if (!revolutPaymentId) {
-      console.error('Invalid Revolut response, missing _id:', revolutResponse.data);
+      console.error('Invalid Revolut response, missing id:', revolutResponse.data);
       return res.status(500).json({
         status: 'error',
         message: 'Invalid response from payment service',
-        error: 'Missing payment _id in response'
+        error: 'Missing payment id in response'
       });
     }
 
-    // Build the checkout URL exactly as required:
-    //   {revolutBaseUrl}/payments/{_id}
-    const checkoutUrl = `${revolutBaseUrl}/payments/${revolutPaymentId}`;
+    if (!checkoutUrl) {
+      console.error('Invalid Revolut response, missing checkout_url:', revolutResponse.data);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Invalid response from payment service',
+        error: 'Missing checkout_url in response. Revolut API should always return checkout_url.'
+      });
+    }
+
     const revolutOrderId = revolutPaymentId;
 
-    // Store full Revolut response for return
+    // Store full Revolut response for return (checkout_url is already included in the response)
     // Handle both axios response structure and direct response
     const fullRevolutResponse = revolutResponse?.data || revolutResponse || {};
-    
+
     // Log for debugging in production
     console.log('Revolut API Response:', JSON.stringify(fullRevolutResponse, null, 2));
+    console.log('Checkout URL from Revolut:', checkoutUrl);
 
     // Create transaction with Revolut data
     const transactionData = {
@@ -237,7 +253,7 @@ const createTransaction = async (req, res) => {
       checkoutUrl,
       revolutOrderId
     };
-    
+
     // Include product if provided in request (even if empty string)
     if (product !== undefined) {
       transactionData.product = typeof product === 'string' ? product.trim() : product;
@@ -252,12 +268,11 @@ const createTransaction = async (req, res) => {
     res.status(201).json({
       message: 'Transaction created successfully',
       transaction: transactionWithoutDuplicates,
-      checkout_url: checkoutUrl,
       revolut: fullRevolutResponse
     });
   } catch (error) {
     console.error('Create transaction error:', error);
-    
+
     // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
@@ -333,7 +348,7 @@ const updateTransaction = async (req, res) => {
     });
   } catch (error) {
     console.error('Update transaction error:', error);
-    
+
     // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);

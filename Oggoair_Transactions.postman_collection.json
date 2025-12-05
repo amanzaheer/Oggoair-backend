@@ -1,0 +1,292 @@
+{
+  "info": {
+    "_postman_id": "oggoair-transactions-collection",
+    "name": "Oggoair Transactions API",
+    "description": "Collection for testing Oggoair transaction endpoints including Revolut payment integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Transaction - Test Mode",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerName\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"phone\": \"+1234567890\",\n  \"description\": \"Flight booking payment\",\n  \"bookingRef\": \"BK001\",\n  \"amount\": 500.50,\n  \"currency\": \"USD\",\n  \"product\": \"Flight Ticket\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/transactions?test=true",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"],
+          "query": [
+            {
+              "key": "test",
+              "value": "true",
+              "description": "Enable test mode (uses mock Revolut response)"
+            }
+          ]
+        },
+        "description": "Creates a new transaction in test mode. Uses mock Revolut payment response when REVOLUT_TEST_MODE=true or test query param is set."
+      },
+      "response": []
+    },
+    {
+      "name": "Create Transaction - Live Mode",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerName\": \"Jane Smith\",\n  \"email\": \"jane.smith@example.com\",\n  \"phone\": \"+1987654321\",\n  \"description\": \"Hotel booking payment\",\n  \"bookingRef\": \"BK002\",\n  \"amount\": 750.00,\n  \"currency\": \"EUR\",\n  \"product\": \"Hotel Reservation\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/transactions",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"]
+        },
+        "description": "Creates a new transaction in live mode. Requires valid REVOLUT_SECRET_KEY in config.env. Makes actual API call to Revolut."
+      },
+      "response": []
+    },
+    {
+      "name": "Create Transaction - Minimal Fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerName\": \"Bob Johnson\",\n  \"email\": \"bob@example.com\",\n  \"phone\": \"+1122334455\",\n  \"bookingRef\": \"BK003\",\n  \"amount\": 100,\n  \"currency\": \"GBP\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/transactions?test=true",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"],
+          "query": [
+            {
+              "key": "test",
+              "value": "true"
+            }
+          ]
+        },
+        "description": "Creates a transaction with only required fields (no description or product)."
+      },
+      "response": []
+    },
+    {
+      "name": "Create Transaction - With Empty Product",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerName\": \"Alice Brown\",\n  \"email\": \"alice@example.com\",\n  \"phone\": \"+1555666777\",\n  \"description\": \"Car rental payment\",\n  \"bookingRef\": \"BK004\",\n  \"amount\": 250.75,\n  \"currency\": \"USD\",\n  \"product\": \"\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/transactions?test=true",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"],
+          "query": [
+            {
+              "key": "test",
+              "value": "true"
+            }
+          ]
+        },
+        "description": "Creates a transaction with empty product string to test that empty strings are handled correctly."
+      },
+      "response": []
+    },
+    {
+      "name": "Get All Transactions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/api/transactions",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"]
+        },
+        "description": "Retrieves all transactions. Supports query parameters: bookingRef, email, search"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Transactions - Filter by BookingRef",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/api/transactions?bookingRef=BK001",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"],
+          "query": [
+            {
+              "key": "bookingRef",
+              "value": "BK001"
+            }
+          ]
+        },
+        "description": "Retrieves transactions filtered by booking reference."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Transactions - Search",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/api/transactions?search=john",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions"],
+          "query": [
+            {
+              "key": "search",
+              "value": "john"
+            }
+          ]
+        },
+        "description": "Searches transactions by customerName, email, or bookingRef (case-insensitive)."
+      },
+      "response": []
+    },
+    {
+      "name": "Update Transaction",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 600.00,\n  \"description\": \"Updated description\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/transactions/:id",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions", ":id"],
+          "variable": [
+            {
+              "key": "id",
+              "value": "REPLACE_WITH_TRANSACTION_ID",
+              "description": "MongoDB transaction _id"
+            }
+          ]
+        },
+        "description": "Updates a transaction. Replace :id with actual transaction _id from MongoDB."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Transaction",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/api/transactions/:id",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "transactions", ":id"],
+          "variable": [
+            {
+              "key": "id",
+              "value": "REPLACE_WITH_TRANSACTION_ID",
+              "description": "MongoDB transaction _id"
+            }
+          ]
+        },
+        "description": "Deletes a transaction. Replace :id with actual transaction _id from MongoDB."
+      },
+      "response": []
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["health"]
+        },
+        "description": "Checks if the server is running."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    }
+  ]
+}
