@@ -30,6 +30,11 @@ const getAllTransactions = async (req, res) => {
   try {
     const filter = {};
 
+    // Filter by booking reference
+    if (req.query.bookingRef) {
+      filter.bookingRef = req.query.bookingRef;
+    }
+
     // Filter by email
     if (req.query.email) {
       filter.email = req.query.email.toLowerCase();
@@ -39,7 +44,8 @@ const getAllTransactions = async (req, res) => {
     if (req.query.search) {
       filter.$or = [
         { customerName: { $regex: req.query.search, $options: 'i' } },
-        { email: { $regex: req.query.search, $options: 'i' } }
+        { email: { $regex: req.query.search, $options: 'i' } },
+        { bookingRef: { $regex: req.query.search, $options: 'i' } }
       ];
     }
 
@@ -65,7 +71,7 @@ const getAllTransactions = async (req, res) => {
 // Create a transaction
 const createTransaction = async (req, res) => {
   try {
-    const { customerName, email, phone, description, amount, currency, product } = req.body;
+    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
 
     // Validate required fields
     if (!customerName || !email || !phone || amount === undefined || !currency) {
@@ -124,6 +130,11 @@ const createTransaction = async (req, res) => {
           checkoutUrl,
           revolutOrderId: mockId
         };
+
+        // Include bookingRef if provided
+        if (bookingRef !== undefined) {
+          transactionData.bookingRef = typeof bookingRef === 'string' ? bookingRef.trim() : bookingRef;
+        }
 
         // Include product if provided in request (even if empty string)
         if (product !== undefined) {
@@ -275,6 +286,11 @@ const createTransaction = async (req, res) => {
       revolutOrderId
     };
 
+    // Include bookingRef if provided
+    if (bookingRef !== undefined) {
+      transactionData.bookingRef = typeof bookingRef === 'string' ? bookingRef.trim() : bookingRef;
+    }
+
     // Include product if provided in request (even if empty string)
     if (product !== undefined) {
       transactionData.product = typeof product === 'string' ? product.trim() : product;
@@ -324,7 +340,7 @@ const createTransaction = async (req, res) => {
 const updateTransaction = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, email, phone, description, amount, currency, product } = req.body;
+    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
 
     const transaction = await Transaction.findById(id);
 
@@ -341,6 +357,7 @@ const updateTransaction = async (req, res) => {
     if (email !== undefined) updateData.email = email.toLowerCase().trim();
     if (phone !== undefined) updateData.phone = phone.trim();
     if (description !== undefined) updateData.description = description?.trim();
+    if (bookingRef !== undefined) updateData.bookingRef = bookingRef?.trim();
     if (amount !== undefined) {
       if (typeof amount !== 'number' || amount < 0) {
         return res.status(400).json({
