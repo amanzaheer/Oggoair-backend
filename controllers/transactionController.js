@@ -1,6 +1,30 @@
 const Transaction = require('../models/Transaction');
 const axios = require('axios');
 
+// Helper function to convert amount to minor currency units (cents/pence)
+// Revolut API expects amounts in minor units (e.g., 50000 cents for $500.00)
+// Most currencies: 100 minor units = 1 major unit (USD, EUR, GBP, etc.)
+// Some currencies: 1 minor unit = 1 major unit (JPY, KRW, etc.)
+// Some currencies: 1000 minor units = 1 major unit (BHD, JOD, etc.)
+const convertToMinorUnits = (amount, currency) => {
+  const currencyUpper = currency.toUpperCase().trim();
+
+  // Currencies with 0 decimal places (1:1 ratio)
+  const zeroDecimalCurrencies = ['JPY', 'KRW', 'VND', 'CLP', 'UGX', 'VUV', 'XAF', 'XOF', 'XPF'];
+  if (zeroDecimalCurrencies.includes(currencyUpper)) {
+    return Math.round(amount);
+  }
+
+  // Currencies with 3 decimal places (1000:1 ratio)
+  const threeDecimalCurrencies = ['BHD', 'JOD', 'KWD', 'OMR', 'TND'];
+  if (threeDecimalCurrencies.includes(currencyUpper)) {
+    return Math.round(amount * 1000);
+  }
+
+  // Default: 2 decimal places (100:1 ratio) - USD, EUR, GBP, etc.
+  return Math.round(amount * 100);
+};
+
 // Get all transactions
 const getAllTransactions = async (req, res) => {
   try {
@@ -75,18 +99,18 @@ const createTransaction = async (req, res) => {
       req.query.mode === 'test';
 
     // Allow overriding base URLs via env, but provide sensible defaults
+    // Sandbox: https://sandbox-merchant.revolut.com/api
+    // Live: https://merchant.revolut.com/api
     const revolutBaseUrl = isTestMode
-      ? (process.env.REVOLUT_BASE_URL_TEST || 'https://merchant.revolut.com/api')
+      ? (process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api')
       : (process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api');
 
     const revolutKey = process.env.REVOLUT_SECRET_KEY;
 
-    // If key is missing or placeholder
-    const isKeyMissingOrPlaceholder =
-      !revolutKey ||
-      revolutKey === 'sk_iF1KSZ8jy4gXup2kFRWr8rWxhzzF7KaYaeMo5xKD37KOMFPsj77KqK0mG8iT0Gwr';
+    // If key is missing
+    const isKeyMissing = !revolutKey;
 
-    if (isKeyMissingOrPlaceholder) {
+    if (isKeyMissing) {
       if (isTestMode) {
         // In test mode we allow missing key and generate a mock payment/checkout URL
         // Note: This is a placeholder URL for testing. It will not work as a real checkout page.
@@ -149,23 +173,28 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Call Revolut Payments API (live or sandbox depending on isTestMode)
+
+    // Convert amount to minor currency units (cents/pence) as required by Revolut API
+    // Example: $500.00 → 50000 cents, €100.00 → 10000 cents
+    const amountInMinorUnits = convertToMinorUnits(amount, currency);
+
     let revolutResponse;
     try {
       revolutResponse = await axios.post(
-        // Endpoint example:
-        //   https://merchant.revolut.com/api/payments
-        // Revolut will return a payment document containing an `_id` field.
-        `${revolutBaseUrl}/payments`,
+        // Endpoint: https://merchant.revolut.com/api/orders
+        // Or: https://sandbox-merchant.revolut.com/api/orders for sandbox
+        `${revolutBaseUrl}/orders`,
         {
-          amount: amount,
+          amount: amountInMinorUnits,
           currency: currency.toUpperCase().trim(),
         },
         {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'Authorization': `Bearer ${process.env.REVOLUT_SECRET_KEY}`
+            'Authorization': `Bearer ${process.env.REVOLUT_SECRET_KEY}`,
+
+            'Revolut-Api-Version': process.env.REVOLUT_API_VERSION || '2023-09-01'
           }
         }
       );
