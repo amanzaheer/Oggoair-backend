@@ -41,6 +41,11 @@ const transactionSchema = new mongoose.Schema({
     uppercase: true,
     maxlength: [3, 'Currency code must be 3 characters']
   },
+  product: {
+    type: String,
+    trim: true,
+    maxlength: [100, 'Product cannot exceed 100 characters']
+  },
   checkoutUrl: {
     type: String,
     trim: true

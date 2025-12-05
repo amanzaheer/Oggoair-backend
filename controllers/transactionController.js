@@ -47,7 +47,7 @@ const getAllTransactions = async (req, res) => {
 // Create a transaction
 const createTransaction = async (req, res) => {
   try {
-    const { customerName, email, phone, description, bookingRef, amount, currency } = req.body;
+    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
 
     // Validate required fields
     if (!customerName || !email || !phone || !bookingRef || amount === undefined || !currency) {
@@ -65,10 +65,14 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Decide which Revolut environment to use based on REVOLUT_TEST_MODE
+    // Decide which Revolut environment to use:
+    // - Prefer REVOLUT_TEST_MODE env
+    // - Allow overriding via query param: /transactions?test=true
     const isTestMode =
       process.env.REVOLUT_TEST_MODE === 'true' ||
-      process.env.REVOLUT_TEST_MODE === '1';
+      process.env.REVOLUT_TEST_MODE === '1' ||
+      req.query.test === 'true' ||
+      req.query.mode === 'test';
 
     // Allow overriding base URLs via env, but provide sensible defaults
     const revolutBaseUrl = isTestMode
@@ -88,7 +92,7 @@ const createTransaction = async (req, res) => {
         const mockId = `test_${Date.now().toString(16)}`;
         const checkoutUrl = `${revolutBaseUrl}/payments/${mockId}`;
 
-        const transaction = await Transaction.create({
+        const transactionData = {
           customerName: customerName.trim(),
           email: email.toLowerCase().trim(),
           phone: phone.trim(),
@@ -98,11 +102,33 @@ const createTransaction = async (req, res) => {
           currency: currency.toUpperCase().trim(),
           checkoutUrl,
           revolutOrderId: mockId
-        });
+        };
+        
+        // Include product if provided in request (even if empty string)
+        if (product !== undefined) {
+          transactionData.product = typeof product === 'string' ? product.trim() : product;
+        }
+
+        const transaction = await Transaction.create(transactionData);
+
+        // Create mock Revolut response object
+        const mockRevolutResponse = {
+          _id: mockId,
+          id: mockId,
+          amount: amount,
+          currency: currency.toUpperCase().trim(),
+          state: 'PENDING',
+          created_at: new Date().toISOString()
+        };
+
+        // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
+        const { checkoutUrl: _, revolutOrderId: __, ...transactionWithoutDuplicates } = transaction.toObject();
 
         return res.status(201).json({
           message: 'Transaction created successfully (mock Revolut payment in test mode)',
-          transaction
+          transaction: transactionWithoutDuplicates,
+          checkout_url: checkoutUrl,
+          revolut: mockRevolutResponse
         });
       }
 
@@ -192,8 +218,15 @@ const createTransaction = async (req, res) => {
     const checkoutUrl = `${revolutBaseUrl}/payments/${revolutPaymentId}`;
     const revolutOrderId = revolutPaymentId;
 
+    // Store full Revolut response for return
+    // Handle both axios response structure and direct response
+    const fullRevolutResponse = revolutResponse?.data || revolutResponse || {};
+    
+    // Log for debugging in production
+    console.log('Revolut API Response:', JSON.stringify(fullRevolutResponse, null, 2));
+
     // Create transaction with Revolut data
-    const transaction = await Transaction.create({
+    const transactionData = {
       customerName: customerName.trim(),
       email: email.toLowerCase().trim(),
       phone: phone.trim(),
@@ -203,11 +236,24 @@ const createTransaction = async (req, res) => {
       currency: currency.toUpperCase().trim(),
       checkoutUrl,
       revolutOrderId
-    });
+    };
+    
+    // Include product if provided in request (even if empty string)
+    if (product !== undefined) {
+      transactionData.product = typeof product === 'string' ? product.trim() : product;
+    }
 
+    const transaction = await Transaction.create(transactionData);
+
+    // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
+    const { checkoutUrl: _, revolutOrderId: __, ...transactionWithoutDuplicates } = transaction.toObject();
+
+    // Ensure revolut object is always included in response
     res.status(201).json({
       message: 'Transaction created successfully',
-      transaction
+      transaction: transactionWithoutDuplicates,
+      checkout_url: checkoutUrl,
+      revolut: fullRevolutResponse
     });
   } catch (error) {
     console.error('Create transaction error:', error);
@@ -242,7 +288,7 @@ const createTransaction = async (req, res) => {
 const updateTransaction = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, email, phone, description, bookingRef, amount, currency } = req.body;
+    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
 
     const transaction = await Transaction.findById(id);
 
@@ -270,6 +316,7 @@ const updateTransaction = async (req, res) => {
       updateData.amount = amount;
     }
     if (currency !== undefined) updateData.currency = currency.toUpperCase().trim();
+    if (product !== undefined) updateData.product = product?.trim();
 
     const updatedTransaction = await Transaction.findByIdAndUpdate(
       id,
