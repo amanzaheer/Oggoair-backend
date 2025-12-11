@@ -305,7 +305,8 @@ const createTransaction = async (req, res) => {
     res.status(201).json({
       message: 'Transaction created successfully',
       transaction: transactionWithoutDuplicates,
-      revolut: fullRevolutResponse
+      revolut: fullRevolutResponse,
+      redirect_url: ''
     });
   } catch (error) {
     console.error('Create transaction error:', error);
