@@ -1,28 +1,140 @@
 const Transaction = require('../models/Transaction');
 const axios = require('axios');
 
+// Supported currencies
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'];
+
 // Helper function to convert amount to minor currency units (cents/pence)
-// Revolut API expects amounts in minor units (e.g., 50000 cents for $500.00)
-// Most currencies: 100 minor units = 1 major unit (USD, EUR, GBP, etc.)
-// Some currencies: 1 minor unit = 1 major unit (JPY, KRW, etc.)
-// Some currencies: 1000 minor units = 1 major unit (BHD, JOD, etc.)
-const convertToMinorUnits = (amount, currency) => {
-  const currencyUpper = currency.toUpperCase().trim();
-
-  // Currencies with 0 decimal places (1:1 ratio)
-  const zeroDecimalCurrencies = ['JPY', 'KRW', 'VND', 'CLP', 'UGX', 'VUV', 'XAF', 'XOF', 'XPF'];
-  if (zeroDecimalCurrencies.includes(currencyUpper)) {
-    return Math.round(amount);
-  }
-
-  // Currencies with 3 decimal places (1000:1 ratio)
-  const threeDecimalCurrencies = ['BHD', 'JOD', 'KWD', 'OMR', 'TND'];
-  if (threeDecimalCurrencies.includes(currencyUpper)) {
-    return Math.round(amount * 1000);
-  }
-
-  // Default: 2 decimal places (100:1 ratio) - USD, EUR, GBP, etc.
+// USD, EUR, and GBP all use 2 decimal places (100:1 ratio)
+const convertToMinorUnits = (amount) => {
   return Math.round(amount * 100);
+};
+
+// Helper function to build transaction data object
+const buildTransactionData = (reqBody, revolutData = {}) => {
+  const { customerName, email, phone, description, bookingRef, amount, currency, product, redirect_url } = reqBody;
+  
+  const transactionData = {
+    customerName: customerName.trim(),
+    email: email.toLowerCase().trim(),
+    phone: phone.trim(),
+    amount,
+    currency: currency.toUpperCase().trim()
+  };
+
+  // Add optional fields if provided
+  if (description) transactionData.description = description.trim();
+  if (bookingRef) transactionData.bookingRef = bookingRef.trim();
+  if (product) transactionData.product = product.trim();
+  if (redirect_url) transactionData.redirect_url = redirect_url.trim();
+  
+  // Add Revolut data if creating after payment order
+  if (revolutData.checkout_url) transactionData.checkoutUrl = revolutData.checkout_url;
+  if (revolutData.id) transactionData.revolutOrderId = revolutData.id;
+  
+  return transactionData;
+};
+
+// Helper function to call Revolut API
+const createRevolutOrder = async (amount, currency, redirect_url) => {
+  const revolutKey = process.env.REVOLUT_SECRET_KEY;
+  
+  if (!revolutKey) {
+    throw new Error('REVOLUT_SECRET_KEY is not configured. Please add it to your config.env file.');
+  }
+
+  // Determine environment (sandbox or live)
+  const isTestMode = process.env.REVOLUT_TEST_MODE === 'true';
+  const revolutBaseUrl = isTestMode
+    ? (process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api')
+    : (process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api');
+
+  // Build order payload
+  const orderPayload = {
+    amount: convertToMinorUnits(amount),
+    currency: currency.toUpperCase().trim()
+  };
+
+  if (redirect_url) {
+    orderPayload.redirect_url = redirect_url.trim();
+  }
+
+  try {
+    const response = await axios.post(
+      `${revolutBaseUrl}/orders`,
+      orderPayload,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${revolutKey}`,
+          'Revolut-Api-Version': process.env.REVOLUT_API_VERSION || '2024-09-01'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    // Re-throw with more context
+    if (error.response) {
+      const statusCode = error.response.status;
+      const errorData = error.response.data;
+      
+      let message = 'Failed to create payment order with Revolut';
+      if (statusCode === 401) {
+        message = 'Revolut API authentication failed. Check your REVOLUT_SECRET_KEY.';
+      } else if (statusCode === 400) {
+        message = 'Invalid payment request. Check amount and currency values.';
+      }
+      
+      const revolutError = new Error(message);
+      revolutError.statusCode = statusCode;
+      revolutError.data = errorData;
+      throw revolutError;
+    } else if (error.request) {
+      const serviceError = new Error('Revolut payment service is unavailable');
+      serviceError.statusCode = 503;
+      throw serviceError;
+    } else {
+      throw error;
+    }
+  }
+};
+
+// Validate required transaction fields
+const validateTransactionInput = (body) => {
+  const { customerName, email, phone, amount, currency } = body;
+  
+  if (!customerName?.trim()) {
+    return 'Customer name is required';
+  }
+  
+  if (!email?.trim()) {
+    return 'Email is required';
+  }
+  
+  if (!phone?.trim()) {
+    return 'Phone is required';
+  }
+  
+  if (amount === undefined || amount === null) {
+    return 'Amount is required';
+  }
+  
+  if (typeof amount !== 'number' || amount <= 0) {
+    return 'Amount must be a positive number';
+  }
+  
+  if (!currency?.trim()) {
+    return 'Currency is required';
+  }
+  
+  const currencyUpper = currency.toUpperCase().trim();
+  if (!SUPPORTED_CURRENCIES.includes(currencyUpper)) {
+    return `Currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}`;
+  }
+  
+  return null;
 };
 
 // Get all transactions
@@ -49,8 +161,7 @@ const getAllTransactions = async (req, res) => {
       ];
     }
 
-    const transactions = await Transaction.find(filter)
-      .sort({ createdAt: -1 });
+    const transactions = await Transaction.find(filter).sort({ createdAt: -1 });
 
     res.status(200).json({
       status: 'success',
@@ -63,267 +174,103 @@ const getAllTransactions = async (req, res) => {
     console.error('Get all transactions error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Error fetching transactions'
+      message: 'Failed to fetch transactions'
     });
   }
 };
 
-// Create a transaction
+// Create a transaction with Revolut payment
 const createTransaction = async (req, res) => {
   try {
-    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
-
-    // Validate required fields
-    if (!customerName || !email || !phone || amount === undefined || !currency) {
+    // Validate input
+    const validationError = validateTransactionInput(req.body);
+    if (validationError) {
       return res.status(400).json({
         status: 'error',
-        message: 'Missing required fields: customerName, email, phone, amount, and currency are required'
+        message: validationError
       });
     }
 
-    // Validate amount is a number and positive
-    if (typeof amount !== 'number' || amount < 0) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Amount must be a positive number'
-      });
-    }
+    const { amount, currency, redirect_url } = req.body;
 
-    // Decide which Revolut environment to use:
-    // - Prefer REVOLUT_TEST_MODE env
-    // - Allow overriding via query param: /transactions?test=true
-    const isTestMode =
-      process.env.REVOLUT_TEST_MODE === 'true' ||
-      process.env.REVOLUT_TEST_MODE === '1' ||
-      req.query.test === 'true' ||
-      req.query.mode === 'test';
-
-    // Allow overriding base URLs via env, but provide sensible defaults
-    // Sandbox: https://sandbox-merchant.revolut.com/api
-    // Live: https://merchant.revolut.com/api
-    const revolutBaseUrl = isTestMode
-      ? (process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api')
-      : (process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api');
-
-    const revolutKey = process.env.REVOLUT_SECRET_KEY;
-
-    // If key is missing
-    const isKeyMissing = !revolutKey;
-
-    if (isKeyMissing) {
-      if (isTestMode) {
-        // In test mode we allow missing key and generate a mock payment/checkout URL
-        // Note: This is a placeholder URL for testing. It will not work as a real checkout page.
-        // In production, use a real Revolut API key to get actual checkout URLs.
-        const mockId = `test_${Date.now().toString(16)}`;
-        const mockToken = `mock_${Date.now().toString(16)}`;
-        // Use Revolut's actual checkout URL format for consistency (but it won't work with mock IDs)
-        const checkoutUrl = `https://checkout.revolut.com/payment-link/${mockToken}`;
-
-        const transactionData = {
-          customerName: customerName.trim(),
-          email: email.toLowerCase().trim(),
-          phone: phone.trim(),
-          description: description?.trim(),
-          amount,
-          currency: currency.toUpperCase().trim(),
-          checkoutUrl,
-          revolutOrderId: mockId
-        };
-
-        // Include bookingRef if provided
-        if (bookingRef !== undefined) {
-          transactionData.bookingRef = typeof bookingRef === 'string' ? bookingRef.trim() : bookingRef;
-        }
-
-        // Include product if provided in request (even if empty string)
-        if (product !== undefined) {
-          transactionData.product = typeof product === 'string' ? product.trim() : product;
-        }
-
-        const transaction = await Transaction.create(transactionData);
-
-        // Create mock Revolut response object matching real API structure
-        const mockRevolutResponse = {
-          id: mockId,
-          token: mockToken,
-          type: 'payment',
-          state: 'PENDING',
-          amount: amount,
-          currency: currency.toUpperCase().trim(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          checkout_url: checkoutUrl,
-          // Note: This is a mock URL for testing. Real checkout URLs come from Revolut API.
-          _note: 'Test mode: This checkout URL is a placeholder and will not work. Use a real Revolut API key for functional checkout URLs.'
-        };
-
-        // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
-        const { checkoutUrl: _, revolutOrderId: __, ...transactionWithoutDuplicates } = transaction.toObject();
-
-        return res.status(201).json({
-          message: 'Transaction created successfully (mock Revolut payment in test mode)',
-          transaction: transactionWithoutDuplicates,
-          revolut: mockRevolutResponse
-        });
-      }
-
-      // In live mode we require a valid key
-      console.error('REVOLUT_SECRET_KEY is not configured in environment variables');
-      return res.status(500).json({
-        status: 'error',
-        message: 'Payment service configuration error',
-        details: 'REVOLUT_SECRET_KEY is missing or not set. Please add your Revolut API key to config.env file, or set REVOLUT_TEST_MODE=true for development testing.'
-      });
-    }
-
-
-    // Convert amount to minor currency units (cents/pence) as required by Revolut API
-    // Example: $500.00 → 50000 cents, €100.00 → 10000 cents
-    const amountInMinorUnits = convertToMinorUnits(amount, currency);
-
-    let revolutResponse;
+    // Create Revolut payment order
+    let revolutData;
     try {
-      revolutResponse = await axios.post(
-        // Endpoint: https://merchant.revolut.com/api/orders
-        // Or: https://sandbox-merchant.revolut.com/api/orders for sandbox
-        `${revolutBaseUrl}/orders`,
-        {
-          amount: amountInMinorUnits,
-          currency: currency.toUpperCase().trim(),
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${process.env.REVOLUT_SECRET_KEY}`,
-
-            'Revolut-Api-Version': process.env.REVOLUT_API_VERSION || '2023-09-01'
-          }
-        }
-      );
+      revolutData = await createRevolutOrder(amount, currency, redirect_url);
     } catch (revolutError) {
-      console.error('Revolut API error:', revolutError.response?.data || revolutError.message);
-
-      // Handle Revolut API errors
-      if (revolutError.response) {
-        // Revolut API returned an error response
-        const statusCode = revolutError.response.status || 500;
-        const errorData = revolutError.response.data || {};
-
-        // Provide more helpful error messages
-        let errorMessage = 'Failed to create payment order';
-        if (statusCode === 401) {
-          errorMessage = 'Revolut API authentication failed. Please check your REVOLUT_SECRET_KEY in config.env';
-        } else if (statusCode === 400) {
-          errorMessage = 'Invalid request to Revolut API. Please check amount and currency values.';
-        }
-
-        return res.status(statusCode).json({
-          status: 'error',
-          message: errorMessage,
-          error: errorData,
-          details: statusCode === 401 ? 'Your Revolut API key may be invalid, expired, or not set correctly.' : undefined
-        });
-      } else if (revolutError.request) {
-        // Request was made but no response received
-        return res.status(503).json({
-          status: 'error',
-          message: 'Payment service unavailable'
-        });
-      } else {
-        // Error in setting up the request
-        return res.status(500).json({
-          status: 'error',
-          message: 'Error calling payment service'
-        });
-      }
-    }
-
-    // Revolut API response includes: id, token, checkout_url, amount, currency, state, etc.
-    // The checkout_url is provided by Revolut in format: https://checkout.revolut.com/payment-link/{token}
-    const revolutData = revolutResponse.data || {};
-    const revolutPaymentId = revolutData.id || revolutData._id;
-    const checkoutUrl = revolutData.checkout_url;
-
-    if (!revolutPaymentId) {
-      console.error('Invalid Revolut response, missing id:', revolutResponse.data);
-      return res.status(500).json({
+      console.error('Revolut API error:', revolutError);
+      
+      return res.status(revolutError.statusCode || 500).json({
         status: 'error',
-        message: 'Invalid response from payment service',
-        error: 'Missing payment id in response'
+        message: revolutError.message,
+        ...(revolutError.data && { error: revolutError.data })
       });
     }
 
-    if (!checkoutUrl) {
-      console.error('Invalid Revolut response, missing checkout_url:', revolutResponse.data);
+    // Validate Revolut response
+    if (!revolutData?.id) {
+      console.error('Invalid Revolut response - missing order ID:', revolutData);
       return res.status(500).json({
         status: 'error',
-        message: 'Invalid response from payment service',
-        error: 'Missing checkout_url in response. Revolut API should always return checkout_url.'
+        message: 'Invalid response from payment service'
       });
     }
 
-    const revolutOrderId = revolutPaymentId;
-
-    // Store full Revolut response for return (checkout_url is already included in the response)
-    // Handle both axios response structure and direct response
-    const fullRevolutResponse = revolutResponse?.data || revolutResponse || {};
-
-    // Log for debugging in production
-    console.log('Revolut API Response:', JSON.stringify(fullRevolutResponse, null, 2));
-    console.log('Checkout URL from Revolut:', checkoutUrl);
-
-    // Create transaction with Revolut data
-    const transactionData = {
-      customerName: customerName.trim(),
-      email: email.toLowerCase().trim(),
-      phone: phone.trim(),
-      description: description?.trim(),
-      amount,
-      currency: currency.toUpperCase().trim(),
-      checkoutUrl,
-      revolutOrderId
-    };
-
-    // Include bookingRef if provided
-    if (bookingRef !== undefined) {
-      transactionData.bookingRef = typeof bookingRef === 'string' ? bookingRef.trim() : bookingRef;
+    if (!revolutData?.checkout_url) {
+      console.error('Invalid Revolut response - missing checkout URL:', revolutData);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Payment service did not return a checkout URL'
+      });
     }
 
-    // Include product if provided in request (even if empty string)
-    if (product !== undefined) {
-      transactionData.product = typeof product === 'string' ? product.trim() : product;
-    }
-
+    // Create transaction record in database
+    const transactionData = buildTransactionData(req.body, revolutData);
     const transaction = await Transaction.create(transactionData);
 
-    // Remove checkoutUrl and revolutOrderId from transaction object to avoid duplication
-    const { checkoutUrl: _, revolutOrderId: __, ...transactionWithoutDuplicates } = transaction.toObject();
-
-    // Ensure revolut object is always included in response
+    // Return success response
     res.status(201).json({
+      status: 'success',
       message: 'Transaction created successfully',
-      transaction: transactionWithoutDuplicates,
-      revolut: fullRevolutResponse,
-      redirect_url: ''
+      data: {
+        transaction: {
+          _id: transaction._id,
+          customerName: transaction.customerName,
+          email: transaction.email,
+          phone: transaction.phone,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          description: transaction.description,
+          bookingRef: transaction.bookingRef,
+          product: transaction.product,
+          createdAt: transaction.createdAt,
+          updatedAt: transaction.updatedAt
+        },
+        payment: {
+          orderId: revolutData.id,
+          checkoutUrl: revolutData.checkout_url,
+          state: revolutData.state,
+          currency: revolutData.currency,
+          amount: revolutData.amount
+        }
+      }
     });
   } catch (error) {
     console.error('Create transaction error:', error);
 
-    // Handle validation errors
+    // Handle Mongoose validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
         status: 'error',
-        message: 'Validation error',
+        message: 'Validation failed',
         errors
       });
     }
 
     // Handle duplicate key errors
     if (error.code === 11000) {
-      return res.status(400).json({
+      return res.status(409).json({
         status: 'error',
         message: 'Transaction already exists'
       });
@@ -331,8 +278,8 @@ const createTransaction = async (req, res) => {
 
     res.status(500).json({
       status: 'error',
-      message: 'Error creating transaction',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Failed to create transaction',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
     });
   }
 };
@@ -341,10 +288,16 @@ const createTransaction = async (req, res) => {
 const updateTransaction = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, email, phone, description, bookingRef, amount, currency, product } = req.body;
+    
+    if (!id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Transaction ID is required'
+      });
+    }
 
     const transaction = await Transaction.findById(id);
-
+    
     if (!transaction) {
       return res.status(404).json({
         status: 'error',
@@ -352,15 +305,20 @@ const updateTransaction = async (req, res) => {
       });
     }
 
+    const { customerName, email, phone, description, bookingRef, amount, currency, product, redirect_url } = req.body;
+
     // Build update object with only provided fields
     const updateData = {};
-    if (customerName !== undefined) updateData.customerName = customerName.trim();
-    if (email !== undefined) updateData.email = email.toLowerCase().trim();
-    if (phone !== undefined) updateData.phone = phone.trim();
+    if (customerName) updateData.customerName = customerName.trim();
+    if (email) updateData.email = email.toLowerCase().trim();
+    if (phone) updateData.phone = phone.trim();
     if (description !== undefined) updateData.description = description?.trim();
     if (bookingRef !== undefined) updateData.bookingRef = bookingRef?.trim();
+    if (product !== undefined) updateData.product = product?.trim();
+    if (redirect_url !== undefined) updateData.redirect_url = redirect_url?.trim();
+    
     if (amount !== undefined) {
-      if (typeof amount !== 'number' || amount < 0) {
+      if (typeof amount !== 'number' || amount <= 0) {
         return res.status(400).json({
           status: 'error',
           message: 'Amount must be a positive number'
@@ -368,8 +326,17 @@ const updateTransaction = async (req, res) => {
       }
       updateData.amount = amount;
     }
-    if (currency !== undefined) updateData.currency = currency.toUpperCase().trim();
-    if (product !== undefined) updateData.product = product?.trim();
+    
+    if (currency) {
+      const currencyUpper = currency.toUpperCase().trim();
+      if (!SUPPORTED_CURRENCIES.includes(currencyUpper)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}`
+        });
+      }
+      updateData.currency = currencyUpper;
+    }
 
     const updatedTransaction = await Transaction.findByIdAndUpdate(
       id,
@@ -392,15 +359,15 @@ const updateTransaction = async (req, res) => {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
         status: 'error',
-        message: 'Validation error',
+        message: 'Validation failed',
         errors
       });
     }
 
     res.status(500).json({
       status: 'error',
-      message: 'Error updating transaction',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Failed to update transaction',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
     });
   }
 };
@@ -409,9 +376,16 @@ const updateTransaction = async (req, res) => {
 const deleteTransaction = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Transaction ID is required'
+      });
+    }
 
     const transaction = await Transaction.findById(id);
-
+    
     if (!transaction) {
       return res.status(404).json({
         status: 'error',
@@ -429,7 +403,7 @@ const deleteTransaction = async (req, res) => {
     console.error('Delete transaction error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Error deleting transaction'
+      message: 'Failed to delete transaction'
     });
   }
 };
@@ -440,4 +414,3 @@ module.exports = {
   updateTransaction,
   deleteTransaction
 };
-
