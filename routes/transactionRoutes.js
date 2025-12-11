@@ -1,14 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const {
-    getAllTransactions,
-    createTransaction,
-    updateTransaction,
-    deleteTransaction
+  getAllTransactions,
+  getTransactionById,
+  createTransaction,
+  updateTransaction,
+  deleteTransaction
 } = require('../controllers/transactionController');
 
 // Get all transactions
 router.get('/', getAllTransactions);
+
+// Get transaction by ID
+router.get('/:id', getTransactionById);
 
 // Create a new transaction
 router.post('/', createTransaction);

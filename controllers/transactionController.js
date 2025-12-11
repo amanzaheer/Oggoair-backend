@@ -32,6 +32,11 @@ const buildTransactionData = (reqBody, revolutData = {}) => {
   if (revolutData.checkout_url) transactionData.checkoutUrl = revolutData.checkout_url;
   if (revolutData.id) transactionData.revolutOrderId = revolutData.id;
   
+  // Store complete Revolut response object
+  if (revolutData && Object.keys(revolutData).length > 0) {
+    transactionData.revolutData = revolutData;
+  }
+  
   return transactionData;
 };
 
@@ -175,6 +180,72 @@ const getAllTransactions = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch transactions'
+    });
+  }
+};
+
+// Get single transaction by ID
+const getTransactionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Transaction ID is required'
+      });
+    }
+
+    const transaction = await Transaction.findById(id);
+
+    if (!transaction) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Transaction not found'
+      });
+    }
+
+    // Build response with transaction and Revolut data
+    const responseData = {
+      transaction: {
+        _id: transaction._id,
+        customerName: transaction.customerName,
+        email: transaction.email,
+        phone: transaction.phone,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        description: transaction.description,
+        bookingRef: transaction.bookingRef,
+        product: transaction.product,
+        redirect_url: transaction.redirect_url,
+        createdAt: transaction.createdAt,
+        updatedAt: transaction.updatedAt
+      }
+    };
+
+    // Include complete Revolut data if available
+    if (transaction.revolutData) {
+      responseData.revolut = transaction.revolutData;
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: responseData
+    });
+  } catch (error) {
+    console.error('Get transaction by ID error:', error);
+    
+    // Handle invalid ObjectId format
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid transaction ID format'
+      });
+    }
+
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch transaction'
     });
   }
 };
@@ -410,6 +481,7 @@ const deleteTransaction = async (req, res) => {
 
 module.exports = {
   getAllTransactions,
+  getTransactionById,
   createTransaction,
   updateTransaction,
   deleteTransaction

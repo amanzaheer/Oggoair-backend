@@ -64,6 +64,10 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    revolutData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: true,
