@@ -88,6 +88,8 @@ const transactionSchema = new mongoose.Schema(
 // Create indexes for better performance
 transactionSchema.index({ bookingRef: 1 });
 transactionSchema.index({ email: 1 });
+transactionSchema.index({ revolutOrderId: 1 });
+transactionSchema.index({ status: 1 });
 transactionSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Transaction", transactionSchema);

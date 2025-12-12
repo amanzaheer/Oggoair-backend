@@ -238,6 +238,11 @@ const getAllTransactions = async (req, res) => {
       filter.email = req.query.email.toLowerCase();
     }
 
+    // Filter by status
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
     // Search functionality
     if (req.query.search) {
       filter.$or = [
@@ -295,6 +300,7 @@ const getTransactionById = async (req, res) => {
         phone: transaction.phone,
         amount: transaction.amount,
         currency: transaction.currency,
+        status: transaction.status,
         description: transaction.description,
         bookingRef: transaction.bookingRef,
         product: transaction.product,
@@ -426,19 +432,15 @@ const createTransaction = async (req, res) => {
           phone: updatedTransaction.phone,
           amount: updatedTransaction.amount,
           currency: updatedTransaction.currency,
+          status: updatedTransaction.status,
           description: updatedTransaction.description,
           bookingRef: updatedTransaction.bookingRef,
           product: updatedTransaction.product,
+          redirect_url: updatedTransaction.redirect_url,
           createdAt: updatedTransaction.createdAt,
           updatedAt: updatedTransaction.updatedAt
         },
-        payment: {
-          orderId: revolutData.id,
-          checkoutUrl: revolutData.checkout_url,
-          state: revolutData.state,
-          currency: revolutData.currency,
-          amount: revolutData.amount
-        }
+        revolut: revolutData
       }
     });
   } catch (error) {
@@ -562,12 +564,34 @@ const updateTransaction = async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    // Build response with transaction and Revolut data
+    const responseData = {
+      transaction: {
+        _id: updatedTransaction._id,
+        customerName: updatedTransaction.customerName,
+        email: updatedTransaction.email,
+        phone: updatedTransaction.phone,
+        amount: updatedTransaction.amount,
+        currency: updatedTransaction.currency,
+        status: updatedTransaction.status,
+        description: updatedTransaction.description,
+        bookingRef: updatedTransaction.bookingRef,
+        product: updatedTransaction.product,
+        redirect_url: updatedTransaction.redirect_url,
+        createdAt: updatedTransaction.createdAt,
+        updatedAt: updatedTransaction.updatedAt
+      }
+    };
+
+    // Include complete Revolut data if available
+    if (updatedTransaction.revolutData) {
+      responseData.revolut = updatedTransaction.revolutData;
+    }
+
     res.status(200).json({
       status: 'success',
       message: 'Transaction updated successfully',
-      data: {
-        transaction: updatedTransaction
-      }
+      data: responseData
     });
   } catch (error) {
     console.error('Update transaction error:', error);
