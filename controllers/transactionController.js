@@ -262,15 +262,34 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    const { amount, currency, redirect_url } = req.body;
+    const { amount, currency } = req.body;
 
-    // Create Revolut payment order
+    // Step 1: Store payload in DB first
+    const initialTransactionData = buildTransactionData(req.body);
+    const transaction = await Transaction.create(initialTransactionData);
+
+    // Build static redirect URL that includes transaction id
+    const paymentRedirectUrl = `https://payment.oggotrip.com/instant-payment/confirmation?transaction_id=${transaction._id}`;
+
+    // Step 2: Call Revolut API
     let revolutData;
     try {
-      revolutData = await createRevolutOrder(amount, currency, redirect_url);
+      revolutData = await createRevolutOrder(amount, currency, paymentRedirectUrl);
     } catch (revolutError) {
       console.error('Revolut API error:', revolutError);
-      
+
+      // Persist failure details so we have a record of the attempt
+      await Transaction.findByIdAndUpdate(
+        transaction._id,
+        {
+          revolutData: {
+            error: revolutError.message,
+            ...(revolutError.data && { data: revolutError.data })
+          }
+        },
+        { new: true }
+      );
+
       return res.status(revolutError.statusCode || 500).json({
         status: 'error',
         message: revolutError.message,
@@ -295,27 +314,35 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Create transaction record in database
-    const transactionData = buildTransactionData(req.body, revolutData);
-    const transaction = await Transaction.create(transactionData);
+    // Step 3: Update transaction with Revolut data
+    const updatedTransaction = await Transaction.findByIdAndUpdate(
+      transaction._id,
+      {
+        checkoutUrl: revolutData.checkout_url,
+        revolutOrderId: revolutData.id,
+        revolutData,
+        redirect_url: paymentRedirectUrl
+      },
+      { new: true }
+    );
 
-    // Return success response
+    // Return success response with updated transaction
     res.status(201).json({
       status: 'success',
       message: 'Transaction created successfully',
       data: {
         transaction: {
-          _id: transaction._id,
-          customerName: transaction.customerName,
-          email: transaction.email,
-          phone: transaction.phone,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          description: transaction.description,
-          bookingRef: transaction.bookingRef,
-          product: transaction.product,
-          createdAt: transaction.createdAt,
-          updatedAt: transaction.updatedAt
+          _id: updatedTransaction._id,
+          customerName: updatedTransaction.customerName,
+          email: updatedTransaction.email,
+          phone: updatedTransaction.phone,
+          amount: updatedTransaction.amount,
+          currency: updatedTransaction.currency,
+          description: updatedTransaction.description,
+          bookingRef: updatedTransaction.bookingRef,
+          product: updatedTransaction.product,
+          createdAt: updatedTransaction.createdAt,
+          updatedAt: updatedTransaction.updatedAt
         },
         payment: {
           orderId: revolutData.id,
