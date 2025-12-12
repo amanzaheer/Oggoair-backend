@@ -10,6 +10,31 @@ const convertToMinorUnits = (amount) => {
   return Math.round(amount * 100);
 };
 
+// Helper function to normalize Revolut state to transaction status
+const normalizeRevolutState = (state) => {
+  if (!state) return 'pending';
+  
+  const stateLower = state.toLowerCase().trim();
+  
+  // Map Revolut states to our status enum values
+  const stateMap = {
+    'pending': 'pending',
+    'created': 'created',
+    'initiated': 'initiated',
+    'authorised': 'authorized',
+    'authorized': 'authorized',
+    'completed': 'completed',
+    'paid': 'paid',
+    'success': 'success',
+    'failed': 'failed',
+    'cancelled': 'cancelled',
+    'canceled': 'canceled',
+    'void': 'void'
+  };
+  
+  return stateMap[stateLower] || 'pending';
+};
+
 // Helper function to build transaction data object
 const buildTransactionData = (reqBody, revolutData = {}) => {
   const { customerName, email, phone, description, bookingRef, amount, currency, product, redirect_url } = reqBody;
@@ -90,6 +115,62 @@ const createRevolutOrder = async (amount, currency, redirect_url) => {
         message = 'Revolut API authentication failed. Check your REVOLUT_SECRET_KEY.';
       } else if (statusCode === 400) {
         message = 'Invalid payment request. Check amount and currency values.';
+      }
+      
+      const revolutError = new Error(message);
+      revolutError.statusCode = statusCode;
+      revolutError.data = errorData;
+      throw revolutError;
+    } else if (error.request) {
+      const serviceError = new Error('Revolut payment service is unavailable');
+      serviceError.statusCode = 503;
+      throw serviceError;
+    } else {
+      throw error;
+    }
+  }
+};
+
+// Helper function to fetch Revolut order details
+const getRevolutOrder = async (revolutOrderId) => {
+  const revolutKey = process.env.REVOLUT_SECRET_KEY;
+  
+  if (!revolutKey) {
+    throw new Error('REVOLUT_SECRET_KEY is not configured. Please add it to your config.env file.');
+  }
+
+  // Determine environment (sandbox or live)
+  const isTestMode = process.env.REVOLUT_TEST_MODE === 'true';
+  const revolutBaseUrl = isTestMode
+    ? (process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api')
+    : (process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api');
+
+  try {
+    const response = await axios.get(
+      `${revolutBaseUrl}/orders/${revolutOrderId}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${revolutKey}`,
+          'Revolut-Api-Version': process.env.REVOLUT_API_VERSION || '2024-09-01'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    // Re-throw with more context
+    if (error.response) {
+      const statusCode = error.response.status;
+      const errorData = error.response.data;
+      
+      let message = 'Failed to fetch order details from Revolut';
+      if (statusCode === 401) {
+        message = 'Revolut API authentication failed. Check your REVOLUT_SECRET_KEY.';
+      } else if (statusCode === 404) {
+        message = 'Revolut order not found.';
+      } else if (statusCode === 400) {
+        message = 'Invalid Revolut order ID.';
       }
       
       const revolutError = new Error(message);
@@ -315,14 +396,21 @@ const createTransaction = async (req, res) => {
     }
 
     // Step 3: Update transaction with Revolut data
+    const updateData = {
+      checkoutUrl: revolutData.checkout_url,
+      revolutOrderId: revolutData.id,
+      revolutData,
+      redirect_url: paymentRedirectUrl
+    };
+    
+    // Set status from Revolut response state if available
+    if (revolutData.state) {
+      updateData.status = normalizeRevolutState(revolutData.state);
+    }
+    
     const updatedTransaction = await Transaction.findByIdAndUpdate(
       transaction._id,
-      {
-        checkoutUrl: revolutData.checkout_url,
-        revolutOrderId: revolutData.id,
-        revolutData,
-        redirect_url: paymentRedirectUrl
-      },
+      updateData,
       { new: true }
     );
 
@@ -403,6 +491,22 @@ const updateTransaction = async (req, res) => {
       });
     }
 
+    // Step 1: Always fetch latest Revolut order details if revolutOrderId exists
+    let latestRevolutData = null;
+    if (transaction.revolutOrderId) {
+      try {
+        latestRevolutData = await getRevolutOrder(transaction.revolutOrderId);
+      } catch (revolutError) {
+        console.error('Failed to fetch Revolut order details:', revolutError);
+        // Return error if Revolut fetch fails - we need the latest data
+        return res.status(revolutError.statusCode || 500).json({
+          status: 'error',
+          message: revolutError.message || 'Failed to fetch latest payment details from Revolut',
+          ...(revolutError.data && { error: revolutError.data })
+        });
+      }
+    }
+
     const { customerName, email, phone, description, bookingRef, amount, currency, product, redirect_url } = req.body;
 
     // Build update object with only provided fields
@@ -434,6 +538,22 @@ const updateTransaction = async (req, res) => {
         });
       }
       updateData.currency = currencyUpper;
+    }
+
+    // Step 2: Always replace revolutData and update status with latest Revolut response if fetched
+    if (latestRevolutData) {
+      // Replace the entire revolutData object with the new one from Revolut
+      updateData.revolutData = latestRevolutData;
+      
+      // Update status from Revolut response state
+      if (latestRevolutData.state) {
+        updateData.status = normalizeRevolutState(latestRevolutData.state);
+      }
+      
+      // Also update checkoutUrl if it changed in the Revolut response
+      if (latestRevolutData.checkout_url) {
+        updateData.checkoutUrl = latestRevolutData.checkout_url;
+      }
     }
 
     const updatedTransaction = await Transaction.findByIdAndUpdate(

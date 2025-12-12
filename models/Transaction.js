@@ -68,6 +68,15 @@ const transactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    status: {
+      type: String,
+      trim: true,
+      default: 'pending',
+      enum: {
+        values: ['pending', 'created', 'initiated', 'authorized', 'completed', 'paid', 'success', 'failed', 'canceled', 'cancelled', 'void'],
+        message: 'Invalid transaction status'
+      },
+    },
   },
   {
     timestamps: true,
