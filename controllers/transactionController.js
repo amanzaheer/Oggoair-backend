@@ -1,5 +1,6 @@
 const Transaction = require("../models/Transaction");
 const axios = require("axios");
+const mongoose = require("mongoose");
 
 // Supported currencies
 const SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP"];
@@ -304,7 +305,15 @@ const getTransactionById = async (req, res) => {
       });
     }
 
-    const transaction = await Transaction.findById(id);
+    // Check if id is MongoDB ObjectId or transaction_id (OGGOTRIP-*)
+    let transaction;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      // It's a MongoDB ObjectId
+      transaction = await Transaction.findById(id);
+    } else {
+      // It's a transaction_id (OGGOTRIP-*)
+      transaction = await Transaction.findOne({ transaction_id: id.toUpperCase() });
+    }
 
     if (!transaction) {
       return res.status(404).json({
@@ -518,7 +527,15 @@ const updateTransaction = async (req, res) => {
       });
     }
 
-    const transaction = await Transaction.findById(id);
+    // Check if id is MongoDB ObjectId or transaction_id (OGGOTRIP-*)
+    let transaction;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      // It's a MongoDB ObjectId
+      transaction = await Transaction.findById(id);
+    } else {
+      // It's a transaction_id (OGGOTRIP-*)
+      transaction = await Transaction.findOne({ transaction_id: id.toUpperCase() });
+    }
 
     if (!transaction) {
       return res.status(404).json({
@@ -607,8 +624,9 @@ const updateTransaction = async (req, res) => {
       }
     }
 
+    // Update using MongoDB _id (not the id parameter which could be transaction_id)
     const updatedTransaction = await Transaction.findByIdAndUpdate(
-      id,
+      transaction._id,
       updateData,
       { new: true, runValidators: true }
     );
@@ -676,7 +694,15 @@ const deleteTransaction = async (req, res) => {
       });
     }
 
-    const transaction = await Transaction.findById(id);
+    // Check if id is MongoDB ObjectId or transaction_id (OGGOTRIP-*)
+    let transaction;
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      // It's a MongoDB ObjectId
+      transaction = await Transaction.findById(id);
+    } else {
+      // It's a transaction_id (OGGOTRIP-*)
+      transaction = await Transaction.findOne({ transaction_id: id.toUpperCase() });
+    }
 
     if (!transaction) {
       return res.status(404).json({
@@ -685,7 +711,8 @@ const deleteTransaction = async (req, res) => {
       });
     }
 
-    await Transaction.findByIdAndDelete(id);
+    // Delete using MongoDB _id
+    await Transaction.findByIdAndDelete(transaction._id);
 
     res.status(200).json({
       status: "success",
