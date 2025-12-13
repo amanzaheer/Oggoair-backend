@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const transactionSchema = new mongoose.Schema(
   {
+    transaction_id: {
+      type: String,
+      unique: true,
+      uppercase: true,
+      trim: true,
+    },
     customerName: {
       type: String,
       required: [true, "Customer name is required"],
@@ -85,7 +91,46 @@ const transactionSchema = new mongoose.Schema(
   }
 );
 
+// Helper function to generate unique transaction ID
+const generateTransactionId = () => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random1 = Math.random().toString(36).substr(2, 4).toUpperCase();
+  const random2 = Math.random().toString(36).substr(2, 4).toUpperCase();
+  return `OGGOTRIP-${timestamp}${random1}${random2}`;
+};
+
+// Pre-save middleware to generate transaction ID with collision handling
+transactionSchema.pre('save', async function (next) {
+  if (this.isNew && !this.transaction_id) {
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (!isUnique && attempts < maxAttempts) {
+      const newId = generateTransactionId();
+      
+      // Check if this ID already exists
+      const existing = await this.constructor.findOne({ transaction_id: newId });
+      
+      if (!existing) {
+        this.transaction_id = newId;
+        isUnique = true;
+      } else {
+        attempts++;
+        // Add small delay to ensure different timestamp
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
+    }
+
+    if (!isUnique) {
+      return next(new Error('Failed to generate unique transaction ID after multiple attempts'));
+    }
+  }
+  next();
+});
+
 // Create indexes for better performance
+transactionSchema.index({ transaction_id: 1 });
 transactionSchema.index({ bookingRef: 1 });
 transactionSchema.index({ email: 1 });
 transactionSchema.index({ revolutOrderId: 1 });

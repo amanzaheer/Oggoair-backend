@@ -246,6 +246,7 @@ const getAllTransactions = async (req, res) => {
     // Search functionality
     if (req.query.search) {
       filter.$or = [
+        { transaction_id: { $regex: req.query.search, $options: 'i' } },
         { customerName: { $regex: req.query.search, $options: 'i' } },
         { email: { $regex: req.query.search, $options: 'i' } },
         { bookingRef: { $regex: req.query.search, $options: 'i' } }
@@ -295,6 +296,7 @@ const getTransactionById = async (req, res) => {
     const responseData = {
       transaction: {
         _id: transaction._id,
+        transaction_id: transaction.transaction_id,
         customerName: transaction.customerName,
         email: transaction.email,
         phone: transaction.phone,
@@ -427,6 +429,7 @@ const createTransaction = async (req, res) => {
       data: {
         transaction: {
           _id: updatedTransaction._id,
+          transaction_id: updatedTransaction.transaction_id,
           customerName: updatedTransaction.customerName,
           email: updatedTransaction.email,
           phone: updatedTransaction.phone,
@@ -568,6 +571,7 @@ const updateTransaction = async (req, res) => {
     const responseData = {
       transaction: {
         _id: updatedTransaction._id,
+        transaction_id: updatedTransaction.transaction_id,
         customerName: updatedTransaction.customerName,
         email: updatedTransaction.email,
         phone: updatedTransaction.phone,
