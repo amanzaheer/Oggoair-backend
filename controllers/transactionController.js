@@ -277,11 +277,27 @@ const getAllTransactions = async (req, res) => {
 
     const transactions = await Transaction.find(filter).sort({ createdAt: -1 });
 
+    // Format transactions to match single transaction response structure
+    const formattedTransactions = transactions.map(transaction => ({
+      _id: transaction._id,
+      transaction_id: transaction.transaction_id,
+      customerName: transaction.customerName,
+      email: transaction.email,
+      phone: transaction.phone,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      status: transaction.status,
+      description: transaction.description,
+      product: transaction.product,
+      createdAt: transaction.createdAt,
+      updatedAt: transaction.updatedAt
+    }));
+
     res.status(200).json({
       status: "success",
       data: {
-        transactions,
-        count: transactions.length,
+        transactions: formattedTransactions,
+        count: formattedTransactions.length,
       },
     });
   } catch (error) {
@@ -334,9 +350,7 @@ const getTransactionById = async (req, res) => {
         currency: transaction.currency,
         status: transaction.status,
         description: transaction.description,
-        bookingRef: transaction.bookingRef,
         product: transaction.product,
-        redirect_url: transaction.redirect_url,
         createdAt: transaction.createdAt,
         updatedAt: transaction.updatedAt,
       },
@@ -477,9 +491,7 @@ const createTransaction = async (req, res) => {
           currency: updatedTransaction.currency,
           status: updatedTransaction.status,
           description: updatedTransaction.description,
-          bookingRef: updatedTransaction.bookingRef,
           product: updatedTransaction.product,
-          redirect_url: updatedTransaction.redirect_url,
           createdAt: updatedTransaction.createdAt,
           updatedAt: updatedTransaction.updatedAt,
         },
@@ -643,9 +655,7 @@ const updateTransaction = async (req, res) => {
         currency: updatedTransaction.currency,
         status: updatedTransaction.status,
         description: updatedTransaction.description,
-        bookingRef: updatedTransaction.bookingRef,
         product: updatedTransaction.product,
-        redirect_url: updatedTransaction.redirect_url,
         createdAt: updatedTransaction.createdAt,
         updatedAt: updatedTransaction.updatedAt,
       },

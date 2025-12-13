@@ -93,9 +93,10 @@ const transactionSchema = new mongoose.Schema(
 
 // Helper function to generate unique transaction ID
 const generateTransactionId = () => {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random1 = Math.random().toString(36).substr(2, 4).toUpperCase();
-  const random2 = Math.random().toString(36).substr(2, 4).toUpperCase();
+  // Use last 6 characters of timestamp for shorter ID
+  const timestamp = Date.now().toString(36).toUpperCase().slice(-6);
+  const random1 = Math.random().toString(36).substr(2, 2).toUpperCase();
+  const random2 = Math.random().toString(36).substr(2, 2).toUpperCase();
   return `OGGOTRIP-${timestamp}${random1}${random2}`;
 };
 
