@@ -525,7 +525,154 @@ const deleteBooking = async (req, res) => {
   }
 };
 
-// Get booking statistics
+// Update specific passenger details
+const updatePassenger = async (req, res) => {
+  try {
+    const { bookingId, passengerIndex } = req.params;
+    const passengerData = req.body;
+
+    const booking = await PassengerBooking.findById(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Booking not found'
+      });
+    }
+
+    if (!checkBookingOwnership(booking, req.user)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Access denied'
+      });
+    }
+
+    if (booking.bookingStatus === 'cancelled') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cannot update cancelled booking'
+      });
+    }
+
+    const index = parseInt(passengerIndex);
+    if (isNaN(index) || index < 0 || index >= booking.passengers.length) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid passenger index'
+      });
+    }
+
+    // Update passenger fields
+    const passenger = booking.passengers[index];
+    
+    if (passengerData.title) passenger.title = passengerData.title;
+    if (passengerData.firstName) passenger.firstName = passengerData.firstName;
+    if (passengerData.lastName) passenger.lastName = passengerData.lastName;
+    if (passengerData.dateOfBirth) passenger.dateOfBirth = passengerData.dateOfBirth;
+    if (passengerData.countryOfBirth !== undefined) passenger.countryOfBirth = passengerData.countryOfBirth;
+    if (passengerData.countryOfResidence !== undefined) passenger.countryOfResidence = passengerData.countryOfResidence;
+    if (passengerData.passportNumber) passenger.passportNumber = passengerData.passportNumber;
+    if (passengerData.passportExpiry) passenger.passportExpiry = passengerData.passportExpiry;
+    
+    // Update address if provided
+    if (passengerData.address) {
+      if (!passenger.address) passenger.address = {};
+      passenger.address = {
+        ...passenger.address,
+        ...passengerData.address
+      };
+    }
+
+    await booking.save();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Passenger details updated successfully',
+      data: {
+        booking: buildBookingResponse(booking),
+        passenger: booking.passengers[index]
+      }
+    });
+  } catch (error) {
+    console.error('Update passenger error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error updating passenger details',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Get user's booking statistics (for dashboard)
+const getMyBookingStats = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const [stats, passengerTypeStats, recentBookings] = await Promise.all([
+      PassengerBooking.aggregate([
+        { $match: { user: userId } },
+        {
+          $group: {
+            _id: null,
+            totalBookings: { $sum: 1 },
+            pendingBookings: {
+              $sum: { $cond: [{ $eq: ['$bookingStatus', 'pending'] }, 1, 0] }
+            },
+            confirmedBookings: {
+              $sum: { $cond: [{ $eq: ['$bookingStatus', 'confirmed'] }, 1, 0] }
+            },
+            cancelledBookings: {
+              $sum: { $cond: [{ $eq: ['$bookingStatus', 'cancelled'] }, 1, 0] }
+            },
+            totalPassengers: { $sum: { $size: '$passengers' } }
+          }
+        }
+      ]),
+      PassengerBooking.aggregate([
+        { $match: { user: userId } },
+        { $unwind: '$passengers' },
+        {
+          $group: {
+            _id: '$passengers.passengerType',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      PassengerBooking.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('bookingReference bookingStatus createdAt passengers')
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        overview: stats[0] || {
+          totalBookings: 0,
+          pendingBookings: 0,
+          confirmedBookings: 0,
+          cancelledBookings: 0,
+          totalPassengers: 0
+        },
+        passengerTypes: passengerTypeStats,
+        recentBookings: recentBookings.map(booking => ({
+          bookingReference: booking.bookingReference,
+          status: booking.bookingStatus,
+          passengerCount: booking.passengers.length,
+          createdAt: booking.createdAt
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Get my booking stats error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching booking statistics'
+    });
+  }
+};
+
+// Get booking statistics (admin only)
 const getBookingStats = async (req, res) => {
   try {
     const [stats, passengerTypeStats] = await Promise.all([
@@ -585,11 +732,13 @@ module.exports = {
   requestBookingWithOTP,
   verifyBookingOTP,
   getMyBookings,
+  getMyBookingStats,
   getAllBookings,
   getBookingById,
   getBookingByReference,
   updateBookingStatus,
   updateBooking,
+  updatePassenger,
   deleteBooking,
   getBookingStats
 };

@@ -67,13 +67,32 @@ const loginValidation = [
 
 // Update user validation rules
 const updateUserValidation = [
-  body('fullName')
+  body('firstName')
     .optional()
     .trim()
     .notEmpty()
-    .withMessage('Full name cannot be empty')
-    .isLength({ max: 100 })
-    .withMessage('Full name cannot exceed 100 characters'),
+    .withMessage('First name cannot be empty')
+    .isLength({ max: 50 })
+    .withMessage('First name cannot exceed 50 characters'),
+
+  body('lastName')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Last name cannot be empty')
+    .isLength({ max: 50 })
+    .withMessage('Last name cannot exceed 50 characters'),
+
+  body('username')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Username cannot be empty')
+    .isLength({ min: 3, max: 30 })
+    .withMessage('Username must be between 3 and 30 characters')
+    .matches(/^[a-zA-Z0-9_]+$/)
+    .withMessage('Username can only contain letters, numbers, and underscores')
+    .toLowerCase(),
 
   body('email')
     .optional()
@@ -88,10 +107,74 @@ const updateUserValidation = [
   body('phone')
     .optional()
     .trim()
-    .notEmpty()
-    .withMessage('Phone number cannot be empty')
-    .matches(/^[\+]?[1-9][\d]{0,15}$/)
+    .custom((value) => {
+      if (value === null || value === '') return true;
+      return /^[\+]?[1-9][\d]{0,15}$/.test(value);
+    })
     .withMessage('Please enter a valid phone number'),
+
+  body('dateOfBirth')
+    .optional()
+    .custom((value) => {
+      if (value === null || value === '') return true;
+      const date = new Date(value);
+      const now = new Date();
+      const minAge = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      return date < minAge && !isNaN(date.getTime());
+    })
+    .withMessage('Please enter a valid date of birth'),
+
+  body('countryOfBirth')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Country of birth cannot exceed 100 characters'),
+
+  body('passportNumber')
+    .optional()
+    .trim()
+    .custom((value) => {
+      if (value === null || value === '') return true;
+      return /^[A-Z0-9]*$/.test(value.toUpperCase());
+    })
+    .withMessage('Passport number can only contain letters and numbers')
+    .isLength({ max: 20 })
+    .withMessage('Passport number cannot exceed 20 characters'),
+
+  body('address')
+    .optional()
+    .isObject()
+    .withMessage('Address must be an object'),
+
+  body('address.street')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Street address cannot exceed 200 characters'),
+
+  body('address.city')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+
+  body('address.state')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('State/Province cannot exceed 100 characters'),
+
+  body('address.country')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Country cannot exceed 100 characters'),
+
+  body('address.postalCode')
+    .optional()
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage('Postal code cannot exceed 20 characters'),
 
   body('role')
     .optional()

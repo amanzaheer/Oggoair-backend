@@ -50,6 +50,69 @@ const userSchema = new mongoose.Schema({
     trim: true,
     match: [/^[\+]?[1-9][\d]{0,15}$/, 'Please enter a valid phone number']
   },
+  dateOfBirth: {
+    type: Date,
+    required: false,
+    default: null,
+    validate: {
+      validator: function(value) {
+        if (!value) return true; // Optional field
+        // Must be in the past and person must be at least 1 year old
+        const now = new Date();
+        const minAge = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        return value < minAge;
+      },
+      message: 'Invalid date of birth'
+    }
+  },
+  countryOfBirth: {
+    type: String,
+    required: false,
+    default: null,
+    trim: true,
+    maxlength: [100, 'Country of birth cannot exceed 100 characters']
+  },
+  passportNumber: {
+    type: String,
+    required: false,
+    default: null,
+    trim: true,
+    uppercase: true,
+    maxlength: [20, 'Passport number cannot exceed 20 characters'],
+    match: [/^[A-Z0-9]*$/, 'Passport number can only contain letters and numbers']
+  },
+  address: {
+    street: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [200, 'Street address cannot exceed 200 characters']
+    },
+    city: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, 'City cannot exceed 100 characters']
+    },
+    state: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, 'State/Province cannot exceed 100 characters']
+    },
+    country: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, 'Country cannot exceed 100 characters']
+    },
+    postalCode: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [20, 'Postal code cannot exceed 20 characters']
+    }
+  },
   password: {
     type: String,
     required: function () {
@@ -84,7 +147,55 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
     select: false // Don't include refresh token in queries by default
-  }
+  },
+  savedPaymentMethods: [{
+    paymentMethodId: {
+      type: String,
+      required: true
+    },
+    provider: {
+      type: String,
+      required: true,
+      enum: ['revolut', 'stripe', 'paypal'],
+      default: 'revolut'
+    },
+    type: {
+      type: String,
+      required: true,
+      enum: ['card', 'bank_account', 'wallet'],
+      default: 'card'
+    },
+    cardBrand: {
+      type: String, // visa, mastercard, amex, etc.
+      trim: true
+    },
+    last4: {
+      type: String,
+      maxlength: 4,
+      trim: true
+    },
+    expiryMonth: {
+      type: String,
+      maxlength: 2
+    },
+    expiryYear: {
+      type: String,
+      maxlength: 4
+    },
+    isDefault: {
+      type: Boolean,
+      default: false
+    },
+    nickname: {
+      type: String,
+      trim: true,
+      maxlength: [50, 'Nickname cannot exceed 50 characters']
+    },
+    addedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -118,6 +229,10 @@ userSchema.virtual('profile').get(function () {
     username: this.username,
     email: this.email,
     phone: this.phone,
+    dateOfBirth: this.dateOfBirth,
+    countryOfBirth: this.countryOfBirth,
+    passportNumber: this.passportNumber,
+    address: this.address,
     type: this.type,
     // Return full role object if populated, otherwise return just the ID
     role: this.role && this.role._id ? {
@@ -127,6 +242,18 @@ userSchema.virtual('profile').get(function () {
     } : this.role,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
+    savedPaymentMethods: this.savedPaymentMethods.map(pm => ({
+      id: pm._id,
+      provider: pm.provider,
+      type: pm.type,
+      cardBrand: pm.cardBrand,
+      last4: pm.last4,
+      expiryMonth: pm.expiryMonth,
+      expiryYear: pm.expiryYear,
+      isDefault: pm.isDefault,
+      nickname: pm.nickname,
+      addedAt: pm.addedAt
+    })),
     createdAt: this.createdAt,
     updatedAt: this.updatedAt
   };
@@ -180,6 +307,65 @@ userSchema.methods.clearRefreshToken = function () {
   return this.save();
 };
 
+// Instance method to add payment method
+userSchema.methods.addPaymentMethod = function (paymentMethodData) {
+  // If this is set as default, unset all other defaults
+  if (paymentMethodData.isDefault) {
+    this.savedPaymentMethods.forEach(pm => {
+      pm.isDefault = false;
+    });
+  }
+  
+  // If this is the first payment method, make it default
+  if (this.savedPaymentMethods.length === 0) {
+    paymentMethodData.isDefault = true;
+  }
+  
+  this.savedPaymentMethods.push(paymentMethodData);
+  return this.save();
+};
+
+// Instance method to remove payment method
+userSchema.methods.removePaymentMethod = function (paymentMethodId) {
+  const index = this.savedPaymentMethods.findIndex(
+    pm => pm._id.toString() === paymentMethodId.toString()
+  );
+  
+  if (index === -1) {
+    throw new Error('Payment method not found');
+  }
+  
+  const wasDefault = this.savedPaymentMethods[index].isDefault;
+  this.savedPaymentMethods.splice(index, 1);
+  
+  // If removed method was default and there are other methods, set first one as default
+  if (wasDefault && this.savedPaymentMethods.length > 0) {
+    this.savedPaymentMethods[0].isDefault = true;
+  }
+  
+  return this.save();
+};
+
+// Instance method to set default payment method
+userSchema.methods.setDefaultPaymentMethod = function (paymentMethodId) {
+  let found = false;
+  
+  this.savedPaymentMethods.forEach(pm => {
+    if (pm._id.toString() === paymentMethodId.toString()) {
+      pm.isDefault = true;
+      found = true;
+    } else {
+      pm.isDefault = false;
+    }
+  });
+  
+  if (!found) {
+    throw new Error('Payment method not found');
+  }
+  
+  return this.save();
+};
+
 // Static method to find user by username or email
 userSchema.statics.findByUsernameOrEmail = function (identifier) {
   return this.findOne({
@@ -195,6 +381,11 @@ userSchema.statics.findByUsernameOrEmail = function (identifier) {
 userSchema.index(
   { username: 1 },
   { unique: true, partialFilterExpression: { type: 'admin' } }
+);
+// Ensure passport number is unique when provided (sparse index allows null values)
+userSchema.index(
+  { passportNumber: 1 },
+  { unique: true, sparse: true }
 );
 userSchema.index({ type: 1 });
 userSchema.index({ role: 1 });

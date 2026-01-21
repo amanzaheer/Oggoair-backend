@@ -3,11 +3,13 @@ const { body } = require('express-validator');
 const {
   createBooking,
   getMyBookings,
+  getMyBookingStats,
   getAllBookings,
   getBookingById,
   getBookingByReference,
   updateBookingStatus,
   updateBooking,
+  updatePassenger,
   deleteBooking,
   getBookingStats,
 } = require('../controllers/bookingController');
@@ -47,14 +49,47 @@ const validateCreateBooking = [
   body('passengers.*.dateOfBirth.year')
     .isInt({ min: 1900, max: new Date().getFullYear() })
     .withMessage('Year of birth must be valid'),
-  body('passengers.*.countryOfResidence')
+  body('passengers.*.countryOfBirth')
+    .optional()
     .trim()
-    .notEmpty()
-    .withMessage('Country of residence is required'),
+    .isLength({ max: 100 })
+    .withMessage('Country of birth cannot exceed 100 characters'),
+  body('passengers.*.countryOfResidence')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Country of residence cannot exceed 100 characters'),
   body('passengers.*.passportNumber')
     .trim()
     .isLength({ min: 1, max: 20 })
-    .withMessage('Passport number is required and must be between 1-20 characters'),
+    .withMessage('Passport number is required and must be between 1-20 characters')
+    .matches(/^[A-Z0-9]*$/i)
+    .withMessage('Passport number can only contain letters and numbers'),
+  body('passengers.*.address.street')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Street address cannot exceed 200 characters'),
+  body('passengers.*.address.city')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('City cannot exceed 100 characters'),
+  body('passengers.*.address.state')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('State/Province cannot exceed 100 characters'),
+  body('passengers.*.address.postalCode')
+    .optional()
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage('Postal code cannot exceed 20 characters'),
+  body('passengers.*.address.country')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Country cannot exceed 100 characters'),
   body('passengers.*.passportExpiry.day')
     .isInt({ min: 1, max: 31 })
     .withMessage('Passport expiry day must be between 1-31'),
@@ -122,10 +157,12 @@ router.post('/sync/duffel', restrictTo('admin'), syncDuffelOrders);
 
 // User routes
 router.get('/my-bookings', getMyBookings);
+router.get('/my-stats', getMyBookingStats);
 router.get('/reference/:reference', getBookingByReference);
 router.get('/:id', getBookingById);
 router.post('/', validateCreateBooking, createBooking);
 router.put('/:id', validateUpdateBooking, updateBooking);
+router.put('/:bookingId/passengers/:passengerIndex', updatePassenger);
 router.patch('/:id/status', validateUpdateStatus, updateBookingStatus);
 router.delete('/:id', deleteBooking);
 

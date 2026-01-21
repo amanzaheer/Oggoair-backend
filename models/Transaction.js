@@ -8,6 +8,12 @@ const transactionSchema = new mongoose.Schema(
       uppercase: true,
       trim: true,
     },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false, // Optional for guest checkouts
+      default: null
+    },
     customerName: {
       type: String,
       required: [true, "Customer name is required"],
@@ -132,6 +138,7 @@ transactionSchema.pre('save', async function (next) {
 
 // Create indexes for better performance
 transactionSchema.index({ transaction_id: 1 });
+transactionSchema.index({ user: 1 }); // For user's payment history
 transactionSchema.index({ bookingRef: 1 });
 transactionSchema.index({ email: 1 });
 transactionSchema.index({ revolutOrderId: 1 });

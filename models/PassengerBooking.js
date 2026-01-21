@@ -40,16 +40,57 @@ const passengerSchema = new mongoose.Schema({
       max: [new Date().getFullYear(), 'Year cannot be in the future']
     }
   },
+  countryOfBirth: {
+    type: String,
+    required: false,
+    trim: true,
+    maxlength: [100, 'Country of birth cannot exceed 100 characters']
+  },
   countryOfResidence: {
     type: String,
-    required: [true, 'Country of residence is required'],
-    trim: true
+    required: false,
+    trim: true,
+    maxlength: [100, 'Country of residence cannot exceed 100 characters']
   },
   passportNumber: {
     type: String,
     required: [true, 'Passport number is required'],
     trim: true,
-    maxlength: [20, 'Passport number cannot exceed 20 characters']
+    uppercase: true,
+    maxlength: [20, 'Passport number cannot exceed 20 characters'],
+    match: [/^[A-Z0-9]*$/, 'Passport number can only contain letters and numbers']
+  },
+  address: {
+    street: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [200, 'Street address cannot exceed 200 characters']
+    },
+    city: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, 'City cannot exceed 100 characters']
+    },
+    state: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, 'State/Province cannot exceed 100 characters']
+    },
+    postalCode: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [20, 'Postal code cannot exceed 20 characters']
+    },
+    country: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, 'Country cannot exceed 100 characters']
+    }
   },
   passportExpiry: {
     day: {

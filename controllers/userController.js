@@ -242,18 +242,12 @@ const getMe = async (req, res) => {
   try {
     // Populate role for current user
     const user = await User.findById(req.user._id)
-      .populate('role', 'name permissions')
-      .select('+refreshToken');
-
-    // Generate new access token
-    const token = generateToken(user._id);
+      .populate('role', 'name permissions');
 
     res.status(200).json({
       status: 'success',
       data: {
-        user: user.profile,
-        token,
-        refreshToken: user.refreshToken
+        user: user.profile
       }
     });
   } catch (error) {
@@ -336,7 +330,18 @@ const getUserById = async (req, res) => {
 // Update user
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, isActive } = req.body;
+    const { 
+      firstName, 
+      lastName, 
+      username,
+      email, 
+      phone, 
+      dateOfBirth,
+      countryOfBirth,
+      passportNumber,
+      address,
+      isActive 
+    } = req.body;
     const userId = req.params.id;
 
     const user = await User.findById(userId);
@@ -347,13 +352,15 @@ const updateUser = async (req, res) => {
       });
     }
 
-    if (req.user.role !== 'admin' && req.user._id.toString() !== userId) {
+    // Authorization check: users can only update their own profile unless they're admin
+    if (req.user.type !== 'admin' && req.user._id.toString() !== userId) {
       return res.status(403).json({
         status: 'error',
         message: 'You can only update your own profile'
       });
     }
 
+    // Check if email is being changed and if it already exists
     if (email && email.toLowerCase() !== user.email) {
       const existingUser = await User.findOne({ email: email.toLowerCase() });
       if (existingUser) {
@@ -364,8 +371,51 @@ const updateUser = async (req, res) => {
       }
     }
 
-    const updateData = { firstName, lastName, email, phone };
-    // Only admin can update isActive
+    // Check if username is being changed and if it already exists (for admins)
+    if (username && username.toLowerCase() !== user.username) {
+      const existingUser = await User.findOne({ username: username.toLowerCase() });
+      if (existingUser) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Username already exists'
+        });
+      }
+    }
+
+    // Check if passport number is being changed and if it already exists
+    if (passportNumber && passportNumber !== user.passportNumber) {
+      const existingUser = await User.findOne({ 
+        passportNumber: passportNumber.toUpperCase(),
+        _id: { $ne: userId } 
+      });
+      if (existingUser) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Passport number already exists'
+        });
+      }
+    }
+
+    // Build update data object
+    const updateData = {};
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (username !== undefined) updateData.username = username;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth;
+    if (countryOfBirth !== undefined) updateData.countryOfBirth = countryOfBirth;
+    if (passportNumber !== undefined) updateData.passportNumber = passportNumber;
+    
+    // Handle address object - merge with existing address
+    if (address !== undefined) {
+      updateData.address = {
+        ...user.address,
+        ...address
+      };
+    }
+
+    // Only admin can update isActive status
     if (req.user.type === 'admin') {
       if (isActive !== undefined) updateData.isActive = isActive;
     }
@@ -386,9 +436,11 @@ const updateUser = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Update user error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Error updating user'
+      message: 'Error updating user',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
