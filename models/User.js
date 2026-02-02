@@ -148,7 +148,8 @@ const userSchema = new mongoose.Schema({
     default: null,
     select: false // Don't include refresh token in queries by default
   },
-  savedPaymentMethods: [{
+  savedPaymentMethods: {
+    type: [{
     paymentMethodId: {
       type: String,
       required: true
@@ -195,7 +196,9 @@ const userSchema = new mongoose.Schema({
       type: Date,
       default: Date.now
     }
-  }]
+    }],
+    default: []
+  }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -242,7 +245,7 @@ userSchema.virtual('profile').get(function () {
     } : this.role,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
-    savedPaymentMethods: this.savedPaymentMethods.map(pm => ({
+    savedPaymentMethods: (this.savedPaymentMethods || []).map(pm => ({
       id: pm._id,
       provider: pm.provider,
       type: pm.type,

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const PassengerBooking = require('../models/PassengerBooking');
 const OTP = require('../models/OTP');
 const User = require('../models/User');
@@ -234,7 +235,16 @@ const getMyBookings = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const filter = { user: req.user._id };
-    if (req.query.status) filter.bookingStatus = req.query.status;
+    if (req.query.status) {
+      const allowedStatuses = ['pending', 'confirmed', 'cancelled'];
+      if (!allowedStatuses.includes(req.query.status)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}`
+        });
+      }
+      filter.bookingStatus = req.query.status;
+    }
 
     const [bookings, total] = await Promise.all([
       PassengerBooking.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -270,8 +280,25 @@ const getAllBookings = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const filter = {};
-    if (req.query.status) filter.bookingStatus = req.query.status;
-    if (req.query.user) filter.user = req.query.user;
+    if (req.query.status) {
+      const allowedStatuses = ['pending', 'confirmed', 'cancelled'];
+      if (!allowedStatuses.includes(req.query.status)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}`
+        });
+      }
+      filter.bookingStatus = req.query.status;
+    }
+    if (req.query.user) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.user)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid user id'
+        });
+      }
+      filter.user = req.query.user;
+    }
     
     if (req.query.search) {
       filter.$or = [
