@@ -2,6 +2,8 @@ const express = require('express');
 const { body } = require('express-validator');
 const {
   createBooking,
+  createBookingWithPayment,
+  confirmBookingPayment,
   getMyBookings,
   getMyBookingStats,
   getAllBookings,
@@ -111,6 +113,17 @@ const validateCreateBooking = [
     .withMessage('Notes.text cannot exceed 1000 characters'),
 ];
 
+// Validation middleware for creating booking + payment (public payment flow)
+const validateCreateBookingPayment = [
+  ...validateCreateBooking,
+  body('amount')
+    .isFloat({ gt: 0 })
+    .withMessage('Amount must be a positive number'),
+  body('currency')
+    .isIn(['USD', 'EUR', 'GBP'])
+    .withMessage('Currency must be one of: USD, EUR, GBP'),
+];
+
 // Validation middleware for updating booking
 const validateUpdateBooking = [
   body('email')
@@ -146,6 +159,10 @@ const validateUpdateStatus = [
 
 // Public routes (no authentication required)
 router.post('/sync/duffel/public', syncDuffelOrders);
+
+// Booking payment flow (no authentication required)
+router.post('/payment', validateCreateBookingPayment, createBookingWithPayment);
+router.get('/payment/confirmation', confirmBookingPayment);
 
 // Protected routes (authentication required)
 router.use(protect);

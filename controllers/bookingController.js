@@ -1,10 +1,157 @@
 const mongoose = require('mongoose');
+const axios = require('axios');
 const PassengerBooking = require('../models/PassengerBooking');
 const OTP = require('../models/OTP');
 const User = require('../models/User');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 const { generateToken } = require('../utils/jwtUtils');
 const { validatePassengerData } = require('../utils/validators');
+
+// Supported currencies (same as transaction flow)
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'];
+
+// Helper function to convert amount to minor currency units (cents/pence)
+const convertToMinorUnits = (amount) => {
+  return Math.round(amount * 100);
+};
+
+// Helper function to normalize Revolut state to our payment status enum values
+const normalizeRevolutState = (state) => {
+  if (!state) return 'pending';
+
+  const stateLower = state.toLowerCase().trim();
+
+  const stateMap = {
+    pending: 'pending',
+    created: 'created',
+    initiated: 'initiated',
+    authorised: 'authorized',
+    authorized: 'authorized',
+    completed: 'completed',
+    paid: 'paid',
+    success: 'success',
+    failed: 'failed',
+    cancelled: 'cancelled',
+    canceled: 'canceled',
+    void: 'void'
+  };
+
+  return stateMap[stateLower] || 'pending';
+};
+
+// Helper function to call Revolut API (copied pattern from transaction flow)
+const createRevolutOrder = async (amount, currency, redirect_url) => {
+  const revolutKey = process.env.REVOLUT_SECRET_KEY;
+
+  if (!revolutKey) {
+    throw new Error(
+      'REVOLUT_SECRET_KEY is not configured. Please add it to your config.env file.'
+    );
+  }
+
+  const isTestMode = process.env.REVOLUT_TEST_MODE === 'true';
+  const revolutBaseUrl = isTestMode
+    ? process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api'
+    : process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api';
+
+  const orderPayload = {
+    amount: convertToMinorUnits(amount),
+    currency: currency.toUpperCase().trim()
+  };
+
+  if (redirect_url) {
+    orderPayload.redirect_url = redirect_url.trim();
+  }
+
+  try {
+    const response = await axios.post(`${revolutBaseUrl}/orders`, orderPayload, {
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${revolutKey}`,
+        'Revolut-Api-Version': process.env.REVOLUT_API_VERSION || '2024-09-01'
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      const statusCode = error.response.status;
+      const errorData = error.response.data;
+
+      let message = 'Failed to create payment order with Revolut';
+      if (statusCode === 401) {
+        message = 'Revolut API authentication failed. Check your REVOLUT_SECRET_KEY.';
+      } else if (statusCode === 400) {
+        message = 'Invalid payment request. Check amount and currency values.';
+      }
+
+      const revolutError = new Error(message);
+      revolutError.statusCode = statusCode;
+      revolutError.data = errorData;
+      throw revolutError;
+    } else if (error.request) {
+      const serviceError = new Error('Revolut payment service is unavailable');
+      serviceError.statusCode = 503;
+      throw serviceError;
+    } else {
+      throw error;
+    }
+  }
+};
+
+// Helper function to fetch Revolut order details (copied pattern from transaction flow)
+const getRevolutOrder = async (revolutOrderId) => {
+  const revolutKey = process.env.REVOLUT_SECRET_KEY;
+
+  if (!revolutKey) {
+    throw new Error(
+      'REVOLUT_SECRET_KEY is not configured. Please add it to your config.env file.'
+    );
+  }
+
+  const isTestMode = process.env.REVOLUT_TEST_MODE === 'true';
+  const revolutBaseUrl = isTestMode
+    ? process.env.REVOLUT_BASE_URL_TEST || 'https://sandbox-merchant.revolut.com/api'
+    : process.env.REVOLUT_BASE_URL_LIVE || 'https://merchant.revolut.com/api';
+
+  try {
+    const response = await axios.get(`${revolutBaseUrl}/orders/${revolutOrderId}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${revolutKey}`,
+        'Revolut-Api-Version': process.env.REVOLUT_API_VERSION || '2024-09-01'
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      const statusCode = error.response.status;
+      const errorData = error.response.data;
+
+      let message = 'Failed to fetch order details from Revolut';
+      if (statusCode === 401) {
+        message = 'Revolut API authentication failed. Check your REVOLUT_SECRET_KEY.';
+      } else if (statusCode === 404) {
+        message = 'Revolut order not found.';
+      } else if (statusCode === 400) {
+        message = 'Invalid Revolut order ID.';
+      }
+
+      const revolutError = new Error(message);
+      revolutError.statusCode = statusCode;
+      revolutError.data = errorData;
+      throw revolutError;
+    } else if (error.request) {
+      const serviceError = new Error('Revolut payment service is unavailable');
+      serviceError.statusCode = 503;
+      throw serviceError;
+    } else {
+      throw error;
+    }
+  }
+};
 
 // Helper to check booking ownership
 const checkBookingOwnership = (booking, user) => {
@@ -14,13 +161,243 @@ const checkBookingOwnership = (booking, user) => {
 
 // Helper to generate booking response
 const buildBookingResponse = (booking) => ({
+  _id: booking._id,
   ...booking.summary,
   email: booking.email,
   phone: booking.phone,
   notes: booking.notes ?? null,
   flightData: booking.flightData ?? null,
-  extraServices: booking.extraServices ?? null
+  extraServices: booking.extraServices ?? null,
+  paymentStatus: booking.paymentStatus ?? 'pending',
+  revolutOrderId: booking.revolutOrderId ?? null,
+  checkoutUrl: booking.checkoutUrl ?? null,
+  redirect_url: booking.redirect_url ?? null
 });
+
+// Create booking (DB-first) and create Revolut order
+// Public endpoint intended for payment flow
+const createBookingWithPayment = async (req, res) => {
+  try {
+    const { email, phone, passengers, notes, flightData, extraServices, amount, currency } =
+      req.body;
+
+    // Validate passengers (same validator used elsewhere in booking flow)
+    const passengerValidation = validatePassengerData(passengers);
+    if (!passengerValidation.valid) {
+      return res.status(400).json({
+        status: 'error',
+        message: passengerValidation.message
+      });
+    }
+
+    // Validate amount/currency (match transaction-style validation expectations)
+    if (amount === undefined || amount === null) {
+      return res.status(400).json({ status: 'error', message: 'Amount is required' });
+    }
+    if (typeof amount !== 'number' || amount <= 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Amount must be a positive number'
+      });
+    }
+    if (!currency || typeof currency !== 'string' || !currency.trim()) {
+      return res.status(400).json({ status: 'error', message: 'Currency is required' });
+    }
+    const currencyUpper = currency.toUpperCase().trim();
+    if (!SUPPORTED_CURRENCIES.includes(currencyUpper)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}`
+      });
+    }
+
+    // Step 1: Store booking payload in DB first (payment status starts pending)
+    const booking = await PassengerBooking.create({
+      email: email?.toLowerCase?.() ? email.toLowerCase() : email,
+      phone,
+      passengers,
+      notes,
+      flightData,
+      extraServices,
+      bookingStatus: 'pending',
+      paymentStatus: 'pending'
+    });
+
+    // Build redirect URL (where Revolut sends the user after checkout)
+    // - In local dev: send back to local frontend
+    // - In prod: send to payment domain (or env override)
+    const bookingConfirmationBaseUrl =
+      process.env.BOOKING_CONFIRMATION_BASE_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      (process.env.NODE_ENV === 'production'
+        ? 'https://payment.oggotrip.com'
+        : 'http://localhost:3000');
+
+    const paymentRedirectUrl = `${bookingConfirmationBaseUrl}/flight/confirmation?booking_id=${booking._id}`;
+
+    // Step 2: Call Revolut API
+    let revolutData;
+    try {
+      revolutData = await createRevolutOrder(amount, currencyUpper, paymentRedirectUrl);
+    } catch (revolutError) {
+      console.error('Revolut API error:', revolutError);
+
+      // Persist failure details so we have a record of the attempt
+      await PassengerBooking.findByIdAndUpdate(
+        booking._id,
+        {
+          revolutData: {
+            error: revolutError.message,
+            ...(revolutError.data && { data: revolutError.data })
+          },
+          redirect_url: paymentRedirectUrl
+        },
+        { new: true }
+      );
+
+      return res.status(revolutError.statusCode || 500).json({
+        status: 'error',
+        message: revolutError.message,
+        ...(revolutError.data && { error: revolutError.data })
+      });
+    }
+
+    // Validate Revolut response
+    if (!revolutData?.id) {
+      console.error('Invalid Revolut response - missing order ID:', revolutData);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Invalid response from payment service'
+      });
+    }
+
+    if (!revolutData?.checkout_url) {
+      console.error('Invalid Revolut response - missing checkout URL:', revolutData);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Payment service did not return a checkout URL'
+      });
+    }
+
+    // Step 3: Update booking with Revolut data
+    const updateData = {
+      checkoutUrl: revolutData.checkout_url,
+      revolutOrderId: revolutData.id,
+      revolutData,
+      redirect_url: paymentRedirectUrl
+    };
+
+    if (revolutData.state) {
+      updateData.paymentStatus = normalizeRevolutState(revolutData.state);
+    }
+
+    const updatedBooking = await PassengerBooking.findByIdAndUpdate(booking._id, updateData, {
+      new: true
+    });
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Booking created successfully',
+      data: {
+        booking: buildBookingResponse(updatedBooking),
+        passengers: updatedBooking.passengers,
+        revolut: revolutData
+      }
+    });
+  } catch (error) {
+    console.error('Create booking with payment error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create booking',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
+  }
+};
+
+// Booking payment confirmation/status sync API
+// Called when confirmation page loads: always uses latest Revolut order detail as source of truth
+const confirmBookingPayment = async (req, res) => {
+  try {
+    const bookingId = req.query.booking_id || req.body?.booking_id;
+
+    if (!bookingId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'booking_id is required'
+      });
+    }
+
+    // Fetch booking by booking_id (Mongo _id) or bookingReference (fallback)
+    let booking;
+    if (mongoose.Types.ObjectId.isValid(bookingId) && bookingId.length === 24) {
+      booking = await PassengerBooking.findById(bookingId);
+    } else {
+      booking = await PassengerBooking.findOne({ bookingReference: String(bookingId).toUpperCase() });
+    }
+
+    if (!booking) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Booking not found'
+      });
+    }
+
+    if (!booking.revolutOrderId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'No Revolut order associated with this booking'
+      });
+    }
+
+    // Always fetch latest Revolut order details (source of truth)
+    let latestRevolutData;
+    try {
+      latestRevolutData = await getRevolutOrder(booking.revolutOrderId);
+    } catch (revolutError) {
+      console.error('Failed to fetch Revolut order details:', revolutError);
+      return res.status(revolutError.statusCode || 500).json({
+        status: 'error',
+        message:
+          revolutError.message || 'Failed to fetch latest payment details from Revolut',
+        ...(revolutError.data && { error: revolutError.data })
+      });
+    }
+
+    const updateData = {
+      revolutData: latestRevolutData
+    };
+
+    if (latestRevolutData?.state) {
+      updateData.paymentStatus = normalizeRevolutState(latestRevolutData.state);
+    }
+
+    if (latestRevolutData?.checkout_url) {
+      updateData.checkoutUrl = latestRevolutData.checkout_url;
+    }
+
+    const updatedBooking = await PassengerBooking.findByIdAndUpdate(booking._id, updateData, {
+      new: true,
+      runValidators: true
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Booking payment status updated successfully',
+      data: {
+        booking: buildBookingResponse(updatedBooking),
+        passengers: updatedBooking.passengers,
+        revolut: updatedBooking.revolutData
+      }
+    });
+  } catch (error) {
+    console.error('Confirm booking payment error:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to confirm booking payment',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
+  }
+};
 
 // Request booking and send OTP
 const requestBookingWithOTP = async (req, res) => {
@@ -756,6 +1133,8 @@ const getBookingStats = async (req, res) => {
 
 module.exports = {
   createBooking,
+  createBookingWithPayment,
+  confirmBookingPayment,
   requestBookingWithOTP,
   verifyBookingOTP,
   getMyBookings,

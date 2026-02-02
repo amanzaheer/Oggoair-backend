@@ -176,6 +176,41 @@ const passengerBookingSchema = new mongoose.Schema({
     enum: ['pending', 'confirmed', 'cancelled'],
     default: 'pending'
   },
+  // Payment fields (Revolut)
+  paymentStatus: {
+    type: String,
+    enum: [
+      'pending',
+      'created',
+      'initiated',
+      'authorized',
+      'completed',
+      'paid',
+      'success',
+      'failed',
+      'cancelled',
+      'canceled',
+      'void'
+    ],
+    default: 'pending'
+  },
+  revolutOrderId: {
+    type: String,
+    default: null,
+    index: true
+  },
+  checkoutUrl: {
+    type: String,
+    default: null
+  },
+  revolutData: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  redirect_url: {
+    type: String,
+    default: null
+  },
   notes: {
     type: {
       type: String,
