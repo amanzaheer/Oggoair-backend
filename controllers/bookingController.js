@@ -153,6 +153,56 @@ const getRevolutOrder = async (revolutOrderId) => {
   }
 };
 
+// Reusable helper to sync booking payment status with latest Revolut order state
+const syncBookingPaymentStatus = async (bookingId) => {
+  if (!bookingId) {
+    throw new Error('bookingId is required to sync payment status');
+  }
+
+  // Fetch booking by Mongo _id or bookingReference
+  let booking;
+  if (mongoose.Types.ObjectId.isValid(bookingId) && String(bookingId).length === 24) {
+    booking = await PassengerBooking.findById(bookingId);
+  } else {
+    booking = await PassengerBooking.findOne({
+      bookingReference: String(bookingId).toUpperCase()
+    });
+  }
+
+  if (!booking) {
+    const notFoundError = new Error('Booking not found');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+
+  if (!booking.revolutOrderId) {
+    // Nothing to sync if there is no Revolut order
+    return booking;
+  }
+
+  // Always fetch latest Revolut order details (source of truth)
+  const latestRevolutData = await getRevolutOrder(booking.revolutOrderId);
+
+  const updateData = {
+    revolutData: latestRevolutData
+  };
+
+  if (latestRevolutData?.state) {
+    updateData.paymentStatus = normalizeRevolutState(latestRevolutData.state);
+  }
+
+  if (latestRevolutData?.checkout_url) {
+    updateData.checkoutUrl = latestRevolutData.checkout_url;
+  }
+
+  const updatedBooking = await PassengerBooking.findByIdAndUpdate(booking._id, updateData, {
+    new: true,
+    runValidators: true
+  });
+
+  return updatedBooking;
+};
+
 // Helper to check booking ownership
 const checkBookingOwnership = (booking, user) => {
   if (user.type === 'admin') return true;
@@ -326,33 +376,18 @@ const confirmBookingPayment = async (req, res) => {
         message: 'booking_id is required'
       });
     }
-
-    // Fetch booking by booking_id (Mongo _id) or bookingReference (fallback)
-    let booking;
-    if (mongoose.Types.ObjectId.isValid(bookingId) && bookingId.length === 24) {
-      booking = await PassengerBooking.findById(bookingId);
-    } else {
-      booking = await PassengerBooking.findOne({ bookingReference: String(bookingId).toUpperCase() });
-    }
-
-    if (!booking) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Booking not found'
-      });
-    }
-
-    if (!booking.revolutOrderId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'No Revolut order associated with this booking'
-      });
-    }
-
-    // Always fetch latest Revolut order details (source of truth)
-    let latestRevolutData;
     try {
-      latestRevolutData = await getRevolutOrder(booking.revolutOrderId);
+      const updatedBooking = await syncBookingPaymentStatus(bookingId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Booking payment status updated successfully',
+        data: {
+          booking: buildBookingResponse(updatedBooking),
+          passengers: updatedBooking.passengers,
+          revolut: updatedBooking.revolutData
+        }
+      });
     } catch (revolutError) {
       console.error('Failed to fetch Revolut order details:', revolutError);
       return res.status(revolutError.statusCode || 500).json({
@@ -362,33 +397,6 @@ const confirmBookingPayment = async (req, res) => {
         ...(revolutError.data && { error: revolutError.data })
       });
     }
-
-    const updateData = {
-      revolutData: latestRevolutData
-    };
-
-    if (latestRevolutData?.state) {
-      updateData.paymentStatus = normalizeRevolutState(latestRevolutData.state);
-    }
-
-    if (latestRevolutData?.checkout_url) {
-      updateData.checkoutUrl = latestRevolutData.checkout_url;
-    }
-
-    const updatedBooking = await PassengerBooking.findByIdAndUpdate(booking._id, updateData, {
-      new: true,
-      runValidators: true
-    });
-
-    return res.status(200).json({
-      status: 'success',
-      message: 'Booking payment status updated successfully',
-      data: {
-        booking: buildBookingResponse(updatedBooking),
-        passengers: updatedBooking.passengers,
-        revolut: updatedBooking.revolutData
-      }
-    });
   } catch (error) {
     console.error('Confirm booking payment error:', error);
     return res.status(500).json({
@@ -719,8 +727,10 @@ const getAllBookings = async (req, res) => {
 // Get booking by ID
 const getBookingById = async (req, res) => {
   try {
-    const booking = await PassengerBooking.findById(req.params.id)
-      .populate('user', 'fullName username email');
+    const booking = await PassengerBooking.findById(req.params.id).populate(
+      'user',
+      'fullName username email'
+    );
 
     if (!booking) {
       return res.status(404).json({
@@ -736,9 +746,18 @@ const getBookingById = async (req, res) => {
       });
     }
 
+    // Keep payment status in sync for admin/dashboard booking detail views
+    let syncedBooking = booking;
+    try {
+      syncedBooking = await syncBookingPaymentStatus(booking._id);
+    } catch (syncError) {
+      // If sync fails, log and fall back to existing booking data
+      console.error('Failed to sync booking payment status for getBookingById:', syncError);
+    }
+
     res.status(200).json({
       status: 'success',
-      data: { booking }
+      data: { booking: syncedBooking }
     });
   } catch (error) {
     console.error('Get booking error:', error);
@@ -752,8 +771,10 @@ const getBookingById = async (req, res) => {
 // Get booking by reference
 const getBookingByReference = async (req, res) => {
   try {
-    const booking = await PassengerBooking.findByReference(req.params.reference)
-      .populate('user', 'fullName username email');
+    const booking = await PassengerBooking.findByReference(req.params.reference).populate(
+      'user',
+      'fullName username email'
+    );
 
     if (!booking) {
       return res.status(404).json({
@@ -769,9 +790,19 @@ const getBookingByReference = async (req, res) => {
       });
     }
 
+    let syncedBooking = booking;
+    try {
+      syncedBooking = await syncBookingPaymentStatus(booking._id);
+    } catch (syncError) {
+      console.error(
+        'Failed to sync booking payment status for getBookingByReference:',
+        syncError
+      );
+    }
+
     res.status(200).json({
       status: 'success',
-      data: { booking }
+      data: { booking: syncedBooking }
     });
   } catch (error) {
     console.error('Get booking by reference error:', error);
