@@ -323,6 +323,9 @@ const createBookingWithPayment = async (req, res) => {
     const { email, phone, passengers, notes, flightData, extraServices, amount, currency } =
       req.body;
 
+    const normalizedEmail =
+      typeof email === 'string' ? email.toLowerCase().trim() : email;
+
     // Validate passengers (same validator used elsewhere in booking flow)
     const passengerValidation = validatePassengerData(passengers);
     if (!passengerValidation.valid) {
@@ -354,8 +357,8 @@ const createBookingWithPayment = async (req, res) => {
     }
 
     // Step 1: Store booking payload in DB first (payment status starts pending)
-    const booking = await PassengerBooking.create({
-      email: email?.toLowerCase?.() ? email.toLowerCase() : email,
+    const bookingPayload = {
+      email: normalizedEmail,
       phone,
       passengers,
       notes,
@@ -363,7 +366,14 @@ const createBookingWithPayment = async (req, res) => {
       extraServices,
       bookingStatus: 'pending',
       paymentStatus: 'pending'
-    });
+    };
+
+    // If the user is authenticated, link the booking to their account
+    if (req.user && req.user._id) {
+      bookingPayload.user = req.user._id;
+    }
+
+    const booking = await PassengerBooking.create(bookingPayload);
 
     // Build redirect URL (where Revolut sends the user after checkout)
     // - In local dev: send back to local frontend
@@ -739,6 +749,13 @@ const getMyBookings = async (req, res) => {
     } else if (requestedStatus === 'confirmed' || requestedStatus === 'pending') {
       queryFilter.bookingStatus = { $ne: 'cancelled' };
     }
+
+    // Only include bookings with non-failed / non-void payment statuses
+    const allowedPaymentStatusesForMyBookings = [
+      ...IN_PROGRESS_PAYMENT_STATUSES,
+      ...SUCCESS_PAYMENT_STATUSES
+    ];
+    queryFilter.paymentStatus = { $in: allowedPaymentStatusesForMyBookings };
 
     const fetchLimit = needsSyncThenFilter ? 150 : limit;
     const fetchSkip = needsSyncThenFilter ? 0 : skip;
