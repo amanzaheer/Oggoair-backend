@@ -9,6 +9,98 @@ const { validatePassengerData } = require('../utils/validators');
 
 // Supported currencies (same as transaction flow)
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'];
+const SUCCESS_PAYMENT_STATUSES = ['paid', 'completed', 'success'];
+const IN_PROGRESS_PAYMENT_STATUSES = ['pending', 'created', 'initiated', 'authorized', 'authorised'];
+const DEFAULT_PAYMENT_REDIRECT_BASE_URL = 'https://payment.oggotrip.com';
+const FAILED_PAYMENT_STATUSES = ['failed', 'cancelled', 'canceled', 'void', 'declined', 'rejected'];
+
+const isLocalhostHost = (host) => {
+  if (!host) return false;
+  const lower = host.toLowerCase();
+  return lower === 'localhost' || lower === '127.0.0.1';
+};
+
+const sanitizeBaseUrl = (rawUrl) => {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    if (isLocalhostHost(parsed.hostname)) {
+      return null;
+    }
+    return parsed.origin;
+  } catch (e) {
+    return null;
+  }
+};
+
+const deriveRedirectBaseUrl = (req) => {
+  const configuredBase =
+    process.env.REVOLUT_REDIRECT_BASE_URL ||
+    process.env.BOOKING_CONFIRMATION_BASE_URL ||
+    process.env.FRONTEND_BASE_URL;
+
+  const headerOrigin = sanitizeBaseUrl(req?.headers?.origin);
+
+  let refererOrigin = null;
+  if (req?.headers?.referer) {
+    try {
+      refererOrigin = sanitizeBaseUrl(new URL(req.headers.referer).origin);
+    } catch (err) {
+      refererOrigin = null;
+    }
+  }
+
+  const forwardedHost = req?.headers?.['x-forwarded-host'];
+  const forwardedProto = req?.headers?.['x-forwarded-proto'] || 'https';
+  const forwardedOrigin = forwardedHost
+    ? sanitizeBaseUrl(`${forwardedProto}://${forwardedHost}`)
+    : null;
+
+  const candidates = [
+    sanitizeBaseUrl(configuredBase),
+    headerOrigin,
+    forwardedOrigin,
+    refererOrigin
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const fallback =
+    sanitizeBaseUrl(process.env.REVOLUT_REDIRECT_FALLBACK_URL) ||
+    DEFAULT_PAYMENT_REDIRECT_BASE_URL;
+
+  return fallback;
+};
+
+const normalizeBookingStatusValue = (status) => {
+  const normalized = String(status || '').toLowerCase().trim();
+  if (normalized === 'confirmed') return 'confirmed';
+  if (normalized === 'cancelled' || normalized === 'canceled') return 'cancelled';
+  return 'pending';
+};
+
+const normalizePaymentStatusValue = (status) => {
+  const normalized = String(status || '').toLowerCase().trim();
+  if (SUCCESS_PAYMENT_STATUSES.includes(normalized)) return 'paid';
+  if (FAILED_PAYMENT_STATUSES.includes(normalized)) return 'failed';
+  if (IN_PROGRESS_PAYMENT_STATUSES.includes(normalized)) return 'pending';
+  return normalized || 'pending';
+};
+
+const serializeBookingForClient = (booking) => {
+  if (!booking) return booking;
+  const plain =
+    typeof booking.toObject === 'function' ? booking.toObject({ virtuals: true }) : { ...booking };
+
+  plain.bookingStatus = normalizeBookingStatusValue(plain.bookingStatus);
+  plain.paymentStatus = normalizePaymentStatusValue(plain.paymentStatus);
+
+  return plain;
+};
 
 // Helper function to convert amount to minor currency units (cents/pence)
 const convertToMinorUnits = (amount) => {
@@ -276,14 +368,11 @@ const createBookingWithPayment = async (req, res) => {
     // Build redirect URL (where Revolut sends the user after checkout)
     // - In local dev: send back to local frontend
     // - In prod: send to payment domain (or env override)
-    const bookingConfirmationBaseUrl =
-      process.env.BOOKING_CONFIRMATION_BASE_URL ||
-      process.env.FRONTEND_BASE_URL ||
-      (process.env.NODE_ENV === 'production'
-        ? 'https://payment.oggotrip.com'
-        : 'http://localhost:3000');
-
-    const paymentRedirectUrl = `${bookingConfirmationBaseUrl}/flight/confirmation?booking_id=${booking._id}`;
+    const redirectBase = deriveRedirectBaseUrl(req);
+    const trimmedBase = redirectBase.endsWith('/')
+      ? redirectBase.slice(0, -1)
+      : redirectBase;
+    const paymentRedirectUrl = `${trimmedBase}/flight/confirmation?booking_id=${booking._id}`;
 
     // Step 2: Call Revolut API
     let revolutData;
@@ -612,39 +701,115 @@ const createBooking = async (req, res) => {
   }
 };
 
-// Get current user's bookings
+// Get current user's bookings (includes linked bookings + guest bookings by same email)
 const getMyBookings = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
     const skip = (page - 1) * limit;
 
-    const filter = { user: req.user._id };
-    if (req.query.status) {
-      const allowedStatuses = ['pending', 'confirmed', 'cancelled'];
-      if (!allowedStatuses.includes(req.query.status)) {
-        return res.status(400).json({
-          status: 'error',
-          message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}`
-        });
-      }
-      filter.bookingStatus = req.query.status;
+    const userEmail = (req.user.email || '').toLowerCase().trim();
+    const requestedStatus = req.query.status ? String(req.query.status).toLowerCase() : null;
+    const allowedStatuses = ['pending', 'confirmed', 'cancelled'];
+
+    if (requestedStatus && !allowedStatuses.includes(requestedStatus)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}`
+      });
     }
 
-    const [bookings, total] = await Promise.all([
-      PassengerBooking.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      PassengerBooking.countDocuments(filter)
-    ]);
+    // Base filter: same PassengerBooking collection as getAllBookings.
+    // Include: (1) bookings linked to user ID, (2) guest bookings (user null/absent) with matching email.
+    const baseFilter = userEmail
+      ? {
+          $or: [
+            { user: req.user._id },
+            { $and: [{ $or: [{ user: null }, { user: { $exists: false } }] }, { email: userEmail }] }
+          ]
+        }
+      : { user: req.user._id };
+
+    // For confirmed/pending: DB paymentStatus can be stale. Must sync first, then filter.
+    // Fetch recent bookings (up to 150), sync with Revolut, filter by payment, paginate.
+    const needsSyncThenFilter = requestedStatus === 'confirmed' || requestedStatus === 'pending';
+    const queryFilter = { ...baseFilter };
+    if (requestedStatus === 'cancelled') {
+      queryFilter.bookingStatus = 'cancelled';
+    } else if (requestedStatus === 'confirmed' || requestedStatus === 'pending') {
+      queryFilter.bookingStatus = { $ne: 'cancelled' };
+    }
+
+    const fetchLimit = needsSyncThenFilter ? 150 : limit;
+    const fetchSkip = needsSyncThenFilter ? 0 : skip;
+
+    const bookings = await PassengerBooking.find(queryFilter)
+      .sort({ createdAt: -1 })
+      .skip(fetchSkip)
+      .limit(fetchLimit)
+      .lean();
+
+    // Dedupe by bookingReference: prefer record with revolutOrderId (canonical payment-linked record)
+    const seenRefs = new Map();
+    const deduped = [];
+    for (const b of bookings) {
+      const ref = (b.bookingReference || b._id?.toString() || '').toUpperCase();
+      const existing = seenRefs.get(ref);
+      const hasRevolut = !!(b.revolutOrderId);
+      if (!existing || (hasRevolut && !existing.revolutOrderId)) {
+        if (existing) deduped.splice(deduped.indexOf(existing), 1);
+        seenRefs.set(ref, b);
+        deduped.push(b);
+      }
+    }
+
+    // Sync payment status with Revolut for each booking
+    const syncedBookings = await Promise.all(
+      deduped.map(async (b) => {
+        if (b.revolutOrderId) {
+          try {
+            return await syncBookingPaymentStatus(b._id);
+          } catch (err) {
+            console.error(`Failed to sync payment status for booking ${b._id}:`, err.message);
+            return b;
+          }
+        }
+        return b;
+      })
+    );
+
+    let resultBookings = syncedBookings;
+    let total = syncedBookings.length;
+
+    if (requestedStatus === 'confirmed') {
+      // Confirmed: bookingStatus === 'confirmed' OR paymentStatus IN ('paid','completed','success')
+      resultBookings = syncedBookings.filter((b) => {
+        const bs = String(b.bookingStatus || '').toLowerCase();
+        const ps = String(b.paymentStatus || '').toLowerCase();
+        return bs === 'confirmed' || SUCCESS_PAYMENT_STATUSES.includes(ps);
+      });
+      total = resultBookings.length;
+      resultBookings = resultBookings.slice(skip, skip + limit);
+    } else if (requestedStatus === 'pending') {
+      // Pending: paymentStatus === 'pending' only
+      resultBookings = syncedBookings.filter((b) =>
+        String(b.paymentStatus || '').toLowerCase() === 'pending'
+      );
+      total = resultBookings.length;
+      resultBookings = resultBookings.slice(skip, skip + limit);
+    } else {
+      total = await PassengerBooking.countDocuments(queryFilter);
+    }
 
     res.status(200).json({
       status: 'success',
       data: {
-        bookings,
+        bookings: resultBookings.map(serializeBookingForClient),
         pagination: {
           page,
           limit,
           total,
-          pages: Math.ceil(total / limit)
+          pages: Math.max(1, Math.ceil(total / limit))
         }
       }
     });
@@ -706,7 +871,7 @@ const getAllBookings = async (req, res) => {
     res.status(200).json({
       status: 'success',
       data: {
-        bookings,
+        bookings: bookings.map(serializeBookingForClient),
         pagination: {
           page,
           limit,
@@ -757,7 +922,7 @@ const getBookingById = async (req, res) => {
 
     res.status(200).json({
       status: 'success',
-      data: { booking: syncedBooking }
+      data: { booking: serializeBookingForClient(syncedBooking) }
     });
   } catch (error) {
     console.error('Get booking error:', error);
@@ -802,7 +967,7 @@ const getBookingByReference = async (req, res) => {
 
     res.status(200).json({
       status: 'success',
-      data: { booking: syncedBooking }
+      data: { booking: serializeBookingForClient(syncedBooking) }
     });
   } catch (error) {
     console.error('Get booking by reference error:', error);
