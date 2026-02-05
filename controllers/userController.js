@@ -639,11 +639,12 @@ const checkEmail = async (req, res) => {
       });
     }
 
-    // Check if email exists in database
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Check if email exists in database and whether a password is set
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
     res.status(200).json({
-      accountExists: !!user
+      accountExists: !!user,
+      hasPassword: !!(user && user.password)
     });
   } catch (error) {
     console.error('Check email error:', error);
