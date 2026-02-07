@@ -108,7 +108,56 @@ const sendWelcomeEmail = async (email, fullName, username, password) => {
     }
 };
 
+// Send referral invite email
+const sendReferralInvite = async (email, referralLink, inviterName = 'A friend') => {
+    try {
+        const transporter = createTransporter();
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: "You're invited! Get €10 off",
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px;">
+                        <h2 style="color: #333; margin-bottom: 20px; text-align: center;">You're Invited!</h2>
+                        <p style="color: #666; font-size: 16px; margin-bottom: 20px;">
+                            Hi there!
+                        </p>
+                        <p style="color: #666; font-size: 16px; margin-bottom: 20px;">
+                            <strong>${inviterName}</strong> has invited you to join OGGO Air and get <strong>€10 off</strong> your first booking!
+                        </p>
+                        <p style="color: #666; font-size: 16px; margin-bottom: 30px;">
+                            Sign up now to claim your discount:
+                        </p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${referralLink}" style="display: inline-block; background-color: #28a745; color: white; font-size: 16px; font-weight: bold; padding: 14px 28px; text-decoration: none; border-radius: 8px;">
+                                Sign Up & Get €10 Off
+                            </a>
+                        </div>
+                        <p style="color: #666; font-size: 14px; margin-top: 30px;">
+                            Or copy this link: <a href="${referralLink}" style="color: #28a745;">${referralLink}</a>
+                        </p>
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                        <p style="color: #999; font-size: 12px; text-align: center;">
+                            This is an invite from OGGO Air. If you didn't expect this email, you can safely ignore it.
+                        </p>
+                    </div>
+                </div>
+            `
+        };
+
+        const result = await transporter.sendMail(mailOptions);
+        console.log('Referral invite email sent successfully:', result.messageId);
+        return { success: true, messageId: result.messageId };
+    } catch (error) {
+        console.error('Error sending referral invite email:', error);
+        return { success: false, error: error.message };
+    }
+};
+
 module.exports = {
     sendOTPEmail,
-    sendWelcomeEmail
+    sendWelcomeEmail,
+    sendReferralInvite
 };

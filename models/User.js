@@ -148,6 +148,13 @@ const userSchema = new mongoose.Schema({
     default: null,
     select: false // Don't include refresh token in queries by default
   },
+  referralCode: {
+    type: String,
+    trim: true,
+    unique: true,
+    sparse: true,
+    default: null
+  },
   savedPaymentMethods: {
     type: [{
     paymentMethodId: {
@@ -245,6 +252,7 @@ userSchema.virtual('profile').get(function () {
     } : this.role,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
+    referralCode: this.referralCode,
     savedPaymentMethods: (this.savedPaymentMethods || []).map(pm => ({
       id: pm._id,
       provider: pm.provider,
@@ -260,6 +268,15 @@ userSchema.virtual('profile').get(function () {
     createdAt: this.createdAt,
     updatedAt: this.updatedAt
   };
+});
+
+// Generate referralCode for customers if not present
+userSchema.pre('save', async function (next) {
+  if (this.type === 'customer' && !this.referralCode) {
+    const crypto = require('crypto');
+    this.referralCode = crypto.randomBytes(6).toString('base64url');
+  }
+  next();
 });
 
 // Migrate fullName to firstName and lastName before saving

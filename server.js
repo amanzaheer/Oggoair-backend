@@ -15,6 +15,7 @@ const permissionRoutes = require('./routes/permissionRoutes');
 const promotionRoutes = require('./routes/promotionRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const paymentMethodRoutes = require('./routes/paymentMethodRoutes');
+const referralRoutes = require('./routes/referralRoutes');
 
 const app = express();
 
@@ -85,6 +86,7 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/payments', paymentMethodRoutes);
+app.use('/api/referrals', referralRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {
