@@ -75,7 +75,9 @@ const userSchema = new mongoose.Schema({
   passportNumber: {
     type: String,
     required: false,
-    default: null,
+    // Store passportNumber only when explicitly provided; avoid null to prevent
+    // unique index conflicts for users who haven't added a passport yet.
+    default: undefined,
     trim: true,
     uppercase: true,
     maxlength: [20, 'Passport number cannot exceed 20 characters'],
@@ -210,6 +212,16 @@ const userSchema = new mongoose.Schema({
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
+});
+
+// Normalize optional fields before saving to avoid unwanted null values
+userSchema.pre('save', function (next) {
+  // If passportNumber is empty, ensure the field is unset so the unique index
+  // doesn't treat multiple "null" values as duplicates.
+  if (!this.passportNumber) {
+    this.passportNumber = undefined;
+  }
+  next();
 });
 
 // Virtual for user's full profile (excluding password)
