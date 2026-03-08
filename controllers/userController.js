@@ -2,7 +2,7 @@ const User = require('../models/User');
 const Role = require('../models/Role');
 const OTP = require('../models/OTP');
 const { generateToken, generateRefreshToken, verifyToken } = require('../utils/jwtUtils');
-const { sendOTPEmail } = require('../utils/emailService');
+const { sendOTPEmail, sendLoginSuccessEmail } = require('../utils/emailService');
 
 // Send OTP for login or registration (unified endpoint)
 const signup = async (req, res) => {
@@ -218,6 +218,12 @@ const login = async (req, res) => {
     const userWithRole = await User.findById(user._id)
       .populate('role', 'name permissions')
       .select('-password -refreshToken');
+
+    // Send "You login successfully" email (fire-and-forget)
+    const userName = user.firstName || user.fullName || '';
+    sendLoginSuccessEmail(user.email, userName).catch((err) =>
+      console.warn('Login success email failed:', err?.message)
+    );
 
     res.status(200).json({
       status: 'success',
@@ -655,10 +661,111 @@ const checkEmail = async (req, res) => {
   }
 };
 
+// Google OAuth login - verifies access token with Google userinfo, creates/finds user, returns JWT
+const googleLogin = async (req, res) => {
+  try {
+    const { accessToken } = req.body;
+    if (!accessToken) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Google access token is required'
+      });
+    }
+
+    let googleRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!googleRes.ok) {
+      googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+    }
+    if (!googleRes.ok) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Invalid or expired Google token'
+      });
+    }
+
+    const googleUser = await googleRes.json();
+    const { sub: googleId, email, picture: googlePicture } = googleUser;
+
+    if (!email) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Google account has no email address'
+      });
+    }
+
+    const name = (googleUser.name && String(googleUser.name).trim()) ||
+      [googleUser.given_name, googleUser.family_name].filter(Boolean).join(' ').trim() ||
+      email.split('@')[0];
+    const nameParts = (name || '').trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    let user = await User.findOne({ $or: [{ googleId }, { email: email.toLowerCase() }] });
+
+    if (!user) {
+      user = await User.create({
+        email: email.toLowerCase(),
+        firstName,
+        lastName,
+        fullName: name,
+        googleId,
+        profilePhotoUrl: googlePicture && String(googlePicture).trim() ? googlePicture : null
+      });
+    } else {
+      let changed = false;
+      if (!user.googleId) { user.googleId = googleId; changed = true; }
+      if (user.fullName !== name) { user.fullName = name; changed = true; }
+      if (user.firstName !== firstName) { user.firstName = firstName; changed = true; }
+      if (user.lastName !== lastName) { user.lastName = lastName; changed = true; }
+      if (!user.profilePhotoUrl && googlePicture && String(googlePicture).trim()) {
+        user.profilePhotoUrl = googlePicture;
+        changed = true;
+      }
+      if (changed) await user.save();
+    }
+
+    const token = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+    await user.updateLastLogin();
+    await user.updateRefreshToken(refreshToken);
+
+    const userWithRole = await User.findById(user._id)
+      .populate('role', 'name permissions')
+      .select('-password -refreshToken');
+
+    // Send "You login successfully" email (fire-and-forget, don't block response)
+    const userName = user.firstName || user.fullName || user.name || '';
+    sendLoginSuccessEmail(user.email, userName).catch((err) =>
+      console.warn('Login success email failed:', err?.message)
+    );
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Google login successful',
+      data: {
+        user: userWithRole.profile,
+        token,
+        refreshToken
+      }
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Could not sign in with Google. Please try again.'
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifySignupOTP,
   login,
+  googleLogin,
   checkEmail,
   getMe,
   getAllUsers,

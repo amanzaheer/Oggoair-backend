@@ -27,6 +27,7 @@ router.post('/register', signupValidation, userController.signup);
 
 // Login and token management
 router.post('/login', loginValidation, userController.login);
+router.post('/auth/login/google', userController.googleLogin);
 router.post('/refresh-token', refreshTokenValidation, userController.refreshToken);
 
 // Protected routes

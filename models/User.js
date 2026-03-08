@@ -157,6 +157,18 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     default: null
   },
+  // Google OAuth
+  googleId: {
+    type: String,
+    trim: true,
+    sparse: true,
+    default: null
+  },
+  profilePhotoUrl: {
+    type: String,
+    trim: true,
+    default: null
+  },
   savedPaymentMethods: {
     type: [{
     paymentMethodId: {
@@ -265,6 +277,7 @@ userSchema.virtual('profile').get(function () {
     isActive: this.isActive,
     lastLogin: this.lastLogin,
     referralCode: this.referralCode,
+    profilePhotoUrl: this.profilePhotoUrl || null,
     savedPaymentMethods: (this.savedPaymentMethods || []).map(pm => ({
       id: pm._id,
       provider: pm.provider,
@@ -419,6 +432,7 @@ userSchema.index(
   { passportNumber: 1 },
   { unique: true, sparse: true }
 );
+userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ type: 1 });
 userSchema.index({ role: 1 });
 
